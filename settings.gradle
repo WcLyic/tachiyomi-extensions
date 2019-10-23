@@ -1,10 +1,11 @@
-new File(rootDir, "src").eachDir { dir ->
+// new File(rootDir, "src").eachDir { dir ->
+    File dir = new File(rootDir, "src/zh")
     dir.eachDir { subdir ->
         String name = ":${dir.name}-${subdir.name}"
         include name
         project(name).projectDir = new File("src/${dir.name}/${subdir.name}")
     }
-}
+// }
 
 include ':lib-ratelimit'
 project(':lib-ratelimit').projectDir = new File("lib/ratelimit")

@@ -24,6 +24,7 @@ class Manhuadui : ParsedHttpSource() {
 
     override val name = "漫画堆"
     override val baseUrl = "https://www.manhuadui.com"
+    val baseUrl2 = "https://m.manhuadui.com"
     override val lang = "zh"
     override val supportsLatest = true
     val imageServer = arrayOf("https://mhcdn.manhuazj.com", "https://res.333dm.com", "https://res02.333dm.com")
@@ -31,7 +32,7 @@ class Manhuadui : ParsedHttpSource() {
     override fun popularMangaSelector() = "li.list-comic"
     override fun searchMangaSelector() = popularMangaSelector()
     override fun latestUpdatesSelector() = popularMangaSelector()
-    override fun chapterListSelector() = "ul[id^=chapter-list] > li"
+    override fun chapterListSelector() = ".chapter-warp > ul > li"
 
     override fun searchMangaNextPageSelector() = "li.next"
     override fun popularMangaNextPageSelector() = searchMangaNextPageSelector()
@@ -57,7 +58,7 @@ class Manhuadui : ParsedHttpSource() {
         }
     }
 
-    override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl + manga.url, headers)
+    override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl2 + manga.url, headers)
     override fun chapterListRequest(manga: SManga) = mangaDetailsRequest(manga)
     override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url, headers)
 
@@ -102,14 +103,21 @@ class Manhuadui : ParsedHttpSource() {
 
         val chapter = SChapter.create()
         chapter.setUrlWithoutDomain(urlElement.attr("href"))
-        chapter.name = urlElement.attr("title").trim()
+        chapter.name = urlElement.text().trim()
         return chapter
     }
 
     override fun mangaDetailsParse(document: Document): SManga {
         val manga = SManga.create()
-        manga.description = document.select("p.comic_deCon_d").text().trim()
-        manga.thumbnail_url = document.select("div.comic_i_img > img").attr("src")
+        manga.description = document.select("#simple-des").text().trim()
+        manga.thumbnail_url = document.select("#Cover > img").attr("src")
+        manga.author = document.select(".Introduct_Sub > .sub_r > .txtItme:eq(0)").text().trim()
+        val status = document.select(".Introduct_Sub > .sub_r > .txtItme:eq(2) > a:eq(3)").text().trim()
+        manga.status = when(status) {
+                            "已完结" -> SManga.COMPLETED
+                            "连载中" -> SManga.ONGOING
+                            else -> SManga.UNKNOWN
+                        }
         return manga
     }
 

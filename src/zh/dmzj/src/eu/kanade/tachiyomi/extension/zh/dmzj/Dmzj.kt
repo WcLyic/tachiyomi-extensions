@@ -45,7 +45,7 @@ class Dmzj : HttpSource() {
                 title = obj.getString("comic_name")
                 thumbnail_url = cleanUrl(obj.getString("comic_cover"))
                 author = obj.optString("comic_author")
-                url = "/comic/comic_$cid.json?version=2.7.019"
+                url = "/comic/comic_$cid.json"
             })
         }
         return MangasPage(ret, false)
@@ -67,10 +67,22 @@ class Dmzj : HttpSource() {
                     "连载中" -> SManga.ONGOING
                     else -> SManga.UNKNOWN
                 }
-                url = "/comic/comic_$cid.json?version=2.7.019"
+                url = "/comic/comic_$cid.json"
             })
         }
         return MangasPage(ret, arr.length() != 0)
+    }
+
+    override fun mangaDetailsRequest(manga: SManga): Request {
+        var r = manga.url
+        if (!r.contains("version")) r += "?version=2.7.019"
+        return GET(baseUrl + r, headers)
+    }
+
+    override fun chapterListRequest(manga: SManga): Request {
+        var r = manga.url
+        if (!r.contains("version")) r += "?version=2.7.019"
+        return GET(baseUrl + r, headers)
     }
 
     override fun popularMangaRequest(page: Int) = myGet("http://v2.api.dmzj.com/classify/0/0/${page-1}.json")
