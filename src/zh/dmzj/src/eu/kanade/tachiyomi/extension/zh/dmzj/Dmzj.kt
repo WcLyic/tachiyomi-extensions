@@ -166,18 +166,23 @@ class Dmzj : HttpSource() {
                 ret.add(SChapter.create().apply {
                     name = "$prefix: ${chapter.getString("chapter_title")}"
                     date_upload = chapter.getString("updatetime").toLong()*1000 //milliseconds
-                    //V3API url = "/chapter/$cid/${chapter.getString("chapter_id")}.json"
-                    url = "http://m.dmzj.com/chapinfo/$cid/${chapter.getString("chapter_id")}.html" //From m_readerBg.js 
+                    url = "/chapter/$cid/${chapter.getString("chapter_id")}.json"
                 })
             }
         }
         return ret
     }
-    
-    override fun pageListRequest(chapter: SChapter) = GET( chapter.url, headers) //Bypass base url
 
     override fun pageListParse(response: Response): List<Page> {
-        val obj = JSONObject(response.body()!!.string())
+        var text = response.body()!!.string()
+        if (text.contains("章节不存在")) {
+            var url = response.request().url().toString()
+            val r = Regex("/chapter/(\\d+?)/(\\d+?)\\.json")
+            val m = r.find(url)
+            url = "http://m.dmzj.com/chapinfo/${m!!.groupValues.get(1)}/${m!!.groupValues.get(2)}.html" //From m_readerBg.js 
+            text = client.newCall(GET(url, headers)).execute().body()!!.string()
+        }
+        val obj = JSONObject(text)
         val arr = obj.getJSONArray("page_url")
         val ret = ArrayList<Page>(arr.length())
         for (i in 0 until arr.length()) {
