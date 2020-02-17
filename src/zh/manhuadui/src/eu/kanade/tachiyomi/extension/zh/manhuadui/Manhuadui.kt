@@ -5,6 +5,7 @@ import com.squareup.duktape.Duktape
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.*
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
@@ -13,6 +14,8 @@ import org.jsoup.nodes.Element
 import javax.crypto.Cipher
 import javax.crypto.spec.IvParameterSpec
 import javax.crypto.spec.SecretKeySpec
+import java.util.Date
+import java.text.SimpleDateFormat
 
 class Manhuadui : ParsedHttpSource() {
 
@@ -115,8 +118,20 @@ class Manhuadui : ParsedHttpSource() {
         return manga
     }
 
+    fun chapterFromElement(element: Element, updateDate: Long): SChapter {
+        val urlElement = element.select("a")
+
+        val chapter = SChapter.create()
+        chapter.setUrlWithoutDomain(urlElement.attr("href"))
+        chapter.name = urlElement.text().trim()
+        chapter.date_upload = updateDate
+        return chapter
+    }
+
     override fun chapterListParse(response: Response): List<SChapter> {
-        return super.chapterListParse(response).asReversed()
+        val document = response.asJsoup()
+        val updateDate = SimpleDateFormat("yyyy-MM-dd HH:mm").parse(document.select(".Introduct_Sub > .sub_r .date").text().trim() + " GMT+08:00").time
+        return document.select(chapterListSelector()).map { chapterFromElement(it, updateDate) }.asReversed()
     }
 
     // ref: https://jueyue.iteye.com/blog/1830792
