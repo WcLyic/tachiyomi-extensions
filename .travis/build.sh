@@ -20,6 +20,6 @@ for APK in ${APKS[@]}; do
 
     ${TOOLS}/zipalign -v -p 4 $APK $APKDEST
     if [ "$TRAVIS_PULL_REQUEST" = "false" ]; then
-        ${TOOLS}/apksigner sign --ks $STORE_PATH --ks-key-alias $STORE_ALIAS --ks-pass env:STORE_PASS --key-pass env:KEY_PASS $APKDEST
+        ${TOOLS}/apksigner sign --ks .travis/app.jks --ks-key-alias app --ks-pass pass:123456 --key-pass pass:123456 $APKDEST
     fi
 done

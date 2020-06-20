@@ -51,7 +51,7 @@ class Dmzj : HttpSource() {
                 title = obj.getString("comic_name")
                 thumbnail_url = cleanUrl(obj.getString("comic_cover"))
                 author = obj.optString("comic_author")
-                url = "/comic/comic_$cid.json?version=2.7.019"
+                url = "/comic/comic_$cid.json"
             })
         }
         return MangasPage(ret, false)
@@ -73,10 +73,22 @@ class Dmzj : HttpSource() {
                     "连载中" -> SManga.ONGOING
                     else -> SManga.UNKNOWN
                 }
-                url = "/comic/comic_$cid.json?version=2.7.019"
+                url = "/comic/comic_$cid.json"
             })
         }
         return MangasPage(ret, arr.length() != 0)
+    }
+
+    override fun mangaDetailsRequest(manga: SManga): Request {
+        var r = manga.url
+        if (!r.contains("version")) r += "?version=2.7.019"
+        return GET(baseUrl + r, headers)
+    }
+
+    override fun chapterListRequest(manga: SManga): Request {
+        var r = manga.url
+        if (!r.contains("version")) r += "?version=2.7.019"
+        return GET(baseUrl + r, headers)
     }
 
     override fun popularMangaRequest(page: Int) = myGet("http://v2.api.dmzj.com/classify/0/0/${page - 1}.json")
@@ -160,18 +172,23 @@ class Dmzj : HttpSource() {
                 ret.add(SChapter.create().apply {
                     name = "$prefix: ${chapter.getString("chapter_title")}"
                     date_upload = chapter.getString("updatetime").toLong() * 1000 // milliseconds
-                    // V3API url = "/chapter/$cid/${chapter.getString("chapter_id")}.json"
-                    url = "http://m.dmzj.com/chapinfo/$cid/${chapter.getString("chapter_id")}.html" // From m_readerBg.js
+                    url = "/chapter/$cid/${chapter.getString("chapter_id")}.json"
                 })
             }
         }
         return ret
     }
 
-    override fun pageListRequest(chapter: SChapter) = GET(chapter.url, headers) // Bypass base url
-
     override fun pageListParse(response: Response): List<Page> {
-        val obj = JSONObject(response.body()!!.string())
+        var text = response.body()!!.string()
+        if (text.contains("章节不存在")) {
+            var url = response.request().url().toString()
+            val r = Regex("/chapter/(\\d+?)/(\\d+?)\\.json")
+            val m = r.find(url)
+            url = "http://m.dmzj.com/chapinfo/${m!!.groupValues.get(1)}/${m!!.groupValues.get(2)}.html" //From m_readerBg.js 
+            text = client.newCall(GET(url, headers)).execute().body()!!.string()
+        }
+        val obj = JSONObject(text)
         val arr = obj.getJSONArray("page_url")
         val ret = ArrayList<Page>(arr.length())
         for (i in 0 until arr.length()) {
