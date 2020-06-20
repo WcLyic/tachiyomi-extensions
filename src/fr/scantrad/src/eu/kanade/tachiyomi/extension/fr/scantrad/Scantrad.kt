@@ -2,15 +2,21 @@ package eu.kanade.tachiyomi.extension.fr.scantrad
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.util.*
 import rx.Observable
 
 class Scantrad : ParsedHttpSource() {
@@ -57,16 +63,16 @@ class Scantrad : ParsedHttpSource() {
 
         document.select(latestUpdatesSelector()).map { mangas.add(latestUpdatesFromElement(it)) }
 
-        return MangasPage(mangas.distinctBy { it.title }, false)
+        return MangasPage(mangas.distinctBy { it.url }, false)
     }
 
-    override fun latestUpdatesSelector() = "div.h-left > div > a"
+    override fun latestUpdatesSelector() = "div.h-left > div.home-manga"
 
     override fun latestUpdatesFromElement(element: Element): SManga {
         val manga = SManga.create()
 
-        manga.url = element.attr("href").substringAfter("mangas").removeSuffix("/").substringBeforeLast("/")
-        manga.title = element.parent().select("div.hmi-titre a").text()
+        manga.setUrlWithoutDomain(element.select("div.hmi-titre a").first().attr("abs:href"))
+        manga.title = element.select("div.hmi-titre a").first().text()
         manga.thumbnail_url = element.select("img").attr("abs:src")
 
         return manga
@@ -132,41 +138,49 @@ class Scantrad : ParsedHttpSource() {
     }
 
     private fun parseChapterDate(date: String): Long {
-        val value = date.split(" ")[3].toInt()
+        val value = date.split(" ")[3].toIntOrNull()
 
-        return when (date.split(" ")[4]) {
-           "minute", "minutes" -> Calendar.getInstance().apply {
-                add(Calendar.MINUTE, value * -1)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            "heure", "heures" -> Calendar.getInstance().apply {
-                add(Calendar.HOUR_OF_DAY, value * -1)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            "jour", "jours" -> Calendar.getInstance().apply {
-                add(Calendar.DATE, value * -1)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            "semaine", "semaines" -> Calendar.getInstance().apply {
-                add(Calendar.DATE, value * 7 * -1)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            "mois" -> Calendar.getInstance().apply {
-                add(Calendar.MONTH, value * -1)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            "an", "ans" -> Calendar.getInstance().apply {
-                add(Calendar.YEAR, value * -1)
-                set(Calendar.SECOND, 0)
-                set(Calendar.MILLISECOND, 0)
-            }.timeInMillis
-            else -> {
-                return 0
+        return if (value != null) {
+            when (date.split(" ")[4]) {
+                "minute", "minutes" -> Calendar.getInstance().apply {
+                    add(Calendar.MINUTE, value * -1)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                "heure", "heures" -> Calendar.getInstance().apply {
+                    add(Calendar.HOUR_OF_DAY, value * -1)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                "jour", "jours" -> Calendar.getInstance().apply {
+                    add(Calendar.DATE, value * -1)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                "semaine", "semaines" -> Calendar.getInstance().apply {
+                    add(Calendar.DATE, value * 7 * -1)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                "mois" -> Calendar.getInstance().apply {
+                    add(Calendar.MONTH, value * -1)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                "an", "ans", "année" -> Calendar.getInstance().apply {
+                    add(Calendar.YEAR, value * -1)
+                    set(Calendar.SECOND, 0)
+                    set(Calendar.MILLISECOND, 0)
+                }.timeInMillis
+                else -> {
+                    return 0L
+                }
+            }
+        } else {
+            try {
+                SimpleDateFormat("dd MMM yyyy", Locale.FRENCH).parse(date.substringAfter("le ")).time
+            } catch (_: Exception) {
+                0L
             }
         }
     }
@@ -176,7 +190,7 @@ class Scantrad : ParsedHttpSource() {
     override fun pageListParse(document: Document): List<Page> {
         val pages = mutableListOf<Page>()
 
-        document.select("div.sc-lel img").forEachIndexed { i, img ->
+        document.select("div.sc-lel img[id]").forEachIndexed { i, img ->
             pages.add(Page(i, "", img.attr("abs:data-src")))
         }
 
@@ -186,5 +200,4 @@ class Scantrad : ParsedHttpSource() {
     override fun imageUrlParse(document: Document) = throw UnsupportedOperationException("Not used")
 
     override fun getFilterList() = FilterList()
-
 }

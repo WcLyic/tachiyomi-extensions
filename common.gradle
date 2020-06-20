@@ -1,6 +1,8 @@
+apply plugin: 'org.jmailen.kotlinter'
+
 android {
     compileSdkVersion 27
-    buildToolsVersion '28.0.3'
+    buildToolsVersion '29.0.3'
 
     buildTypes {
         release {
@@ -36,9 +38,22 @@ android {
         versionName "$libVersion.$extVersionCode"
         setProperty("archivesBaseName", "tachiyomi-$pkgNameSuffix-v$versionName")
         manifestPlaceholders = [
-                appName: appName,
+                appName : appName,
                 extClass: extClass,
         ]
+    }
+
+    dependenciesInfo {
+        includeInApk = false
+    }
+
+    compileOptions {
+        sourceCompatibility = 1.8
+        targetCompatibility = 1.8
+    }
+
+    kotlinOptions {
+        jvmTarget = "1.8"
     }
 }
 
@@ -47,9 +62,19 @@ repositories {
 }
 
 dependencies {
-    compileOnly "org.jetbrains.kotlin:kotlin-stdlib:$kotlin_version"
-    compileOnly "eu.kanade.tachiyomi:extensions-library:$libVersion"
+    // Lib 1.2, but using specific commit so we don't need to bump up the version
+    compileOnly "com.github.tachiyomiorg:extensions-lib:a596412"
+
+    // These are provided by the app itself
+    compileOnly "org.jetbrains.kotlin:kotlin-stdlib-jdk8:$kotlin_version"
+
+    compileOnly 'com.github.inorichi.injekt:injekt-core:65b0440'
     compileOnly 'com.squareup.okhttp3:okhttp:3.10.0'
     compileOnly 'io.reactivex:rxjava:1.3.6'
     compileOnly 'org.jsoup:jsoup:1.10.2'
+    compileOnly 'com.google.code.gson:gson:2.8.2'
+    compileOnly 'com.github.salomonbrys.kotson:kotson:2.5.0'
 }
+
+preBuild.dependsOn(lintKotlin)
+lintKotlin.dependsOn(formatKotlin)

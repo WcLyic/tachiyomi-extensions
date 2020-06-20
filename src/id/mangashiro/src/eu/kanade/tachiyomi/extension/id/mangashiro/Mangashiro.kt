@@ -1,29 +1,33 @@
 package eu.kanade.tachiyomi.extension.id.mangashiro
 
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import okhttp3.*
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import eu.kanade.tachiyomi.source.model.*
-import java.text.SimpleDateFormat
-import java.util.*
-import java.text.ParseException
 
 class Mangashiro : ParsedHttpSource() {
 
     override val name = "Mangashiro"
-    override val baseUrl = "https://mangashiro.org"
+    override val baseUrl = "https://mangashiro.co"
     override val lang = "id"
     override val supportsLatest = true
     override val client: OkHttpClient = network.cloudflareClient
 
     override fun popularMangaRequest(page: Int): Request {
-        return GET("$baseUrl/manga/page/$page/?order=popular", headers)
+        return GET("$baseUrl/manga/?order=popular&page=$page", headers)
     }
 
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/manga/page/$page/?order=latest", headers)
+        return GET("$baseUrl/manga/?order=update&page=$page", headers)
     }
 
     override fun popularMangaSelector() = "div.bs"
@@ -32,8 +36,8 @@ class Mangashiro : ParsedHttpSource() {
 
     override fun popularMangaFromElement(element: Element): SManga = searchMangaFromElement(element)
     override fun latestUpdatesFromElement(element: Element): SManga = searchMangaFromElement(element)
-    
-    override fun popularMangaNextPageSelector() = "a.next.page-numbers"
+
+    override fun popularMangaNextPageSelector() = "a.r"
     override fun latestUpdatesNextPageSelector() = popularMangaNextPageSelector()
     override fun searchMangaNextPageSelector() = popularMangaNextPageSelector()
 
@@ -137,7 +141,7 @@ class Mangashiro : ParsedHttpSource() {
         document.select("div#readerarea img").forEach { element ->
             val url = element.attr("src")
             i++
-            if (url.length != 0) {
+            if (url.isNotEmpty()) {
                 pages.add(Page(i, "", url))
             }
         }
@@ -261,6 +265,4 @@ class Mangashiro : ParsedHttpSource() {
             Filter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
         fun toUriPart() = vals[state].second
     }
-
-
 }

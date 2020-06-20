@@ -7,8 +7,16 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -16,18 +24,17 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.*
-import java.util.concurrent.TimeUnit
 
 class CentralDeMangas : ParsedHttpSource() {
+
+    // Hardcode the id because the language wasn't specific.
+    override val id: Long = 711589261250964163
 
     override val name = "Central de Mangás"
 
     override val baseUrl = "http://centraldemangas.online"
 
-    override val lang = "pt"
+    override val lang = "pt-BR"
 
     override val supportsLatest = true
 
@@ -144,7 +151,7 @@ class CentralDeMangas : ParsedHttpSource() {
             ?.let { parseChapterDate(it) } ?: 0
     }
 
-    private fun parseChapterDate(date: String) : Long {
+    private fun parseChapterDate(date: String): Long {
         return try {
             SimpleDateFormat("dd/MM/yyyy", Locale.ENGLISH).parse(date).time
         } catch (e: ParseException) {
@@ -188,7 +195,7 @@ class CentralDeMangas : ParsedHttpSource() {
     private fun Response.asJsonArray(): JsonArray = JSON_PARSER.parse(body()!!.string()).array
 
     companion object {
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/69.0.3497.92 Safari/537.36"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36"
         private const val COVER_CDN = "http://capas.centraldemangas.com.br"
 
         private const val SCRIPT_URL_BEGIN = "var urlSulfix = '"

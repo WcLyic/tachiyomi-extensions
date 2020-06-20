@@ -4,11 +4,13 @@ import android.app.Application
 import android.content.SharedPreferences
 import android.support.v7.preference.ListPreference
 import android.support.v7.preference.PreferenceScreen
-import eu.kanade.tachiyomi.extension.BuildConfig
-import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.Companion.getArtists
-import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.Companion.getGroups
-import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.Companion.getTags
-import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.Companion.getTime
+import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.getArtists
+import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.getGroups
+import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.getNumPages
+import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.getTagDescription
+import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.getTags
+import eu.kanade.tachiyomi.extension.all.nhentai.NHUtils.getTime
+import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -20,7 +22,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -42,19 +43,41 @@ open class NHentai(
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.cloudflareClient
-
-    override fun headersBuilder() = Headers.Builder().apply {
-        add("User-Agent", "Tachiyomi/${BuildConfig.VERSION_NAME} ${System.getProperty("http.agent")}")
-    }
+    private val rateLimitInterceptor = RateLimitInterceptor(4)
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+        .addNetworkInterceptor(rateLimitInterceptor)
+        .build()
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
 
-    private var displayFullTitle: Boolean = when(preferences.getString(TITLE_PREF, "full")){
+    private var displayFullTitle: Boolean = when (preferences.getString(TITLE_PREF, "full")) {
         "full" -> true
         else -> false
+    }
+
+    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
+        val serverPref = androidx.preference.ListPreference(screen.context).apply {
+            key = TITLE_PREF
+            title = TITLE_PREF
+            entries = arrayOf("Full Title", "Short Title")
+            entryValues = arrayOf("full", "short")
+            summary = "%s"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                displayFullTitle = when (newValue) {
+                    "full" -> true
+                    else -> false
+                }
+                true
+            }
+        }
+
+        if (!preferences.contains(TITLE_PREF))
+            preferences.edit().putString(TITLE_PREF, "full").apply()
+
+        screen.addPreference(serverPref)
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
@@ -66,7 +89,7 @@ open class NHentai(
             summary = "%s"
 
             setOnPreferenceChangeListener { _, newValue ->
-                displayFullTitle = when(newValue){
+                displayFullTitle = when (newValue) {
                     "full" -> true
                     else -> false
                 }
@@ -74,7 +97,7 @@ open class NHentai(
             }
         }
 
-        if(!preferences.contains(TITLE_PREF))
+        if (!preferences.contains(TITLE_PREF))
             preferences.edit().putString(TITLE_PREF, "full").apply()
 
         screen.addPreference(serverPref)
@@ -105,28 +128,49 @@ open class NHentai(
     override fun popularMangaNextPageSelector() = latestUpdatesNextPageSelector()
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        return if (query.startsWith(PREFIX_ID_SEARCH)) {
-            val id = query.removePrefix(PREFIX_ID_SEARCH)
-            client.newCall(searchMangaByIdRequest(id))
-                .asObservableSuccess()
-                .map { response -> searchMangaByIdParse(response, id) }
-        } else {
-            return super.fetchSearchManga(page, query, filters)
+        return when {
+            query.startsWith(PREFIX_ID_SEARCH) -> {
+                val id = query.removePrefix(PREFIX_ID_SEARCH)
+                client.newCall(searchMangaByIdRequest(id))
+                    .asObservableSuccess()
+                    .map { response -> searchMangaByIdParse(response, id) }
+            }
+            query.isQueryIdNumbers() -> {
+                client.newCall(searchMangaByIdRequest(query))
+                    .asObservableSuccess()
+                    .map { response -> searchMangaByIdParse(response, query) }
+            }
+            else -> super.fetchSearchManga(page, query, filters)
         }
     }
 
+    // The website redirects for any number <= 400000
+    private fun String.isQueryIdNumbers(): Boolean {
+        val int = this.toIntOrNull() ?: return false
+        return int <= 400000
+    }
+
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val url = HttpUrl.parse("$baseUrl/search")!!.newBuilder()
-            .addQueryParameter("q", "$query +$nhLang")
-            .addQueryParameter("page", page.toString())
+        val filters = if (filters.isEmpty()) getFilterList() else filters
 
-        filters.forEach {
-            when (it) {
-                is SortFilter -> url.addQueryParameter("sort", it.values[it.state].toLowerCase())
+        val favoriteFilter = filters.findInstance<FavoriteFilter>()
+        if (favoriteFilter != null && favoriteFilter.state) {
+            val url = HttpUrl.parse("$baseUrl/favorites")!!.newBuilder()
+                .addQueryParameter("q", query)
+                .addQueryParameter("page", page.toString())
+
+            return GET(url.toString(), headers)
+        } else {
+            val url = HttpUrl.parse("$baseUrl/search")!!.newBuilder()
+                .addQueryParameter("q", "$query +$nhLang")
+                .addQueryParameter("page", page.toString())
+
+            filters.findInstance<SortFilter>()?.let { f ->
+                url.addQueryParameter("sort", f.values[f.state].toLowerCase())
             }
-        }
 
-        return GET(url.build().toString(), headers)
+            return GET(url.toString(), headers)
+        }
     }
 
     private fun searchMangaByIdRequest(id: String) = GET("$baseUrl/g/$id", headers)
@@ -135,6 +179,17 @@ open class NHentai(
         val details = mangaDetailsParse(response)
         details.url = "/g/$id/"
         return MangasPage(listOf(details), false)
+    }
+
+    override fun searchMangaParse(response: Response): MangasPage {
+        if (response.request().url().toString().contains("/login/")) {
+            val document = response.asJsoup()
+            if (document.select(".fa-sign-in").isNotEmpty()) {
+                throw Exception("Log in via WebView to view favorites")
+            }
+        }
+
+        return super.searchMangaParse(response)
     }
 
     override fun searchMangaFromElement(element: Element) = latestUpdatesFromElement(element)
@@ -156,10 +211,10 @@ open class NHentai(
             description = "Full English and Japanese titles:\n"
                 .plus("$fullTitle\n")
                 .plus("${document.select("div#info h2").text()}\n\n")
-                .plus("Length: ${document.select("div#info div:contains(pages)").text()}\n")
+                .plus("Pages: ${getNumPages(document)}\n")
                 .plus("Favorited by: ${document.select("div#info i.fa-heart + span span").text().removeSurrounding("(", ")")}\n")
-                .plus("Categories: ${document.select("div.field-name:contains(Categories) span.tags a").first()?.ownText()}\n\n")
-                .plus(getTags(document))
+                .plus(getTagDescription(document))
+            genre = getTags(document)
         }
     }
 
@@ -179,32 +234,28 @@ open class NHentai(
 
     override fun chapterListSelector() = throw UnsupportedOperationException("Not used")
 
-    override fun pageListRequest(chapter: SChapter) = GET("$baseUrl${chapter.url}", headers)
-
     override fun pageListParse(document: Document): List<Page> {
-        val pageElements = document.select("#thumbnail-container > div")
-        val pageList = mutableListOf<Page>()
-
-        pageElements.forEach {
-            Page(pageList.size).run {
-                this.imageUrl = it.select("a > img").attr("data-src").replace("t.nh", "i.nh").replace("t.", ".")
-
-                pageList.add(pageList.size, this)
-            }
+        return document.select("div.thumbs a > img").mapIndexed { i, img ->
+            Page(i, "", img.attr("abs:data-src").replace("t.nh", "i.nh").replace("t.", "."))
         }
-
-        return pageList
     }
 
-    override fun getFilterList(): FilterList = FilterList(SortFilter())
+    override fun getFilterList(): FilterList = FilterList(
+        SortFilter(),
+        Filter.Header("Sort is ignored if favorites only"),
+        FavoriteFilter()
+    )
 
     override fun imageUrlParse(document: Document) = throw UnsupportedOperationException("Not used")
+
+    private class FavoriteFilter : Filter.CheckBox("Show favorites only", false)
+
+    private class SortFilter : Filter.Select<String>("Sort", arrayOf("Popular", "Date"))
+
+    private inline fun <reified T> Iterable<*>.findInstance() = find { it is T } as? T
 
     companion object {
         const val PREFIX_ID_SEARCH = "id:"
         private const val TITLE_PREF = "Display manga title as:"
     }
-
-    private class SortFilter : Filter.Select<String>("Sort", arrayOf("Popular", "Date"))
-
 }

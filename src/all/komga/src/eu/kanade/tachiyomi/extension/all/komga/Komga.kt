@@ -4,25 +4,42 @@ import android.app.Application
 import android.content.SharedPreferences
 import android.support.v7.preference.EditTextPreference
 import android.support.v7.preference.PreferenceScreen
+import android.text.InputType
 import android.widget.Toast
 import com.github.salomonbrys.kotson.fromJson
 import com.google.gson.Gson
 import eu.kanade.tachiyomi.extension.BuildConfig
-import eu.kanade.tachiyomi.extension.all.komga.dto.*
+import eu.kanade.tachiyomi.extension.all.komga.dto.BookDto
+import eu.kanade.tachiyomi.extension.all.komga.dto.LibraryDto
+import eu.kanade.tachiyomi.extension.all.komga.dto.PageDto
+import eu.kanade.tachiyomi.extension.all.komga.dto.PageWrapperDto
+import eu.kanade.tachiyomi.extension.all.komga.dto.SeriesDto
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import okhttp3.*
+import java.text.DecimalFormat
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import okhttp3.Credentials
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import rx.Single
 import rx.android.schedulers.AndroidSchedulers
 import rx.schedulers.Schedulers
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.text.SimpleDateFormat
-import java.util.*
 
-open class Komga : ConfigurableSource, HttpSource() {
+open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
     override fun popularMangaRequest(page: Int): Request =
         GET("$baseUrl/api/v1/series?page=${page - 1}", headers)
 
@@ -40,6 +57,11 @@ open class Komga : ConfigurableSource, HttpSource() {
 
         filters.forEach { filter ->
             when (filter) {
+                is UnreadOnly -> {
+                    if (filter.state) {
+                        url.addQueryParameter("read_status", "UNREAD")
+                    }
+                }
                 is LibraryGroup -> {
                     val libraryToInclude = mutableListOf<Long>()
                     filter.state.forEach { content ->
@@ -49,6 +71,29 @@ open class Komga : ConfigurableSource, HttpSource() {
                     }
                     if (libraryToInclude.isNotEmpty()) {
                         url.addQueryParameter("library_id", libraryToInclude.joinToString(","))
+                    }
+                }
+                is StatusGroup -> {
+                    val statusToInclude = mutableListOf<String>()
+                    filter.state.forEach { content ->
+                        if (content.state) {
+                            statusToInclude.add(content.name.toUpperCase(Locale.ROOT))
+                        }
+                    }
+                    if (statusToInclude.isNotEmpty()) {
+                        url.addQueryParameter("status", statusToInclude.joinToString(","))
+                    }
+                }
+                is Filter.Sort -> {
+                    var sortCriteria = when (filter.state?.index) {
+                        0 -> "metadata.titleSort"
+                        1 -> "createdDate"
+                        2 -> "lastModifiedDate"
+                        else -> ""
+                    }
+                    if (sortCriteria.isNotEmpty()) {
+                        sortCriteria += "," + if (filter.state?.ascending!!) "asc" else "desc"
+                        url.addQueryParameter("sort", sortCriteria)
                     }
                 }
             }
@@ -69,18 +114,16 @@ open class Komga : ConfigurableSource, HttpSource() {
     }
 
     override fun chapterListRequest(manga: SManga): Request =
-        GET("$baseUrl${manga.url}/books?size=1000", headers)
+        GET("$baseUrl${manga.url}/books?size=1000&media_status=READY", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val page = gson.fromJson<PageWrapperDto<BookDto>>(response.body()?.charStream()!!)
-        val chapterListUrl = response.request().url().newBuilder()
-            .removeAllQueryParameters("size").build().toString()
 
-        return page.content.mapIndexed { i, book ->
+        return page.content.map { book ->
             SChapter.create().apply {
-                chapter_number = (i + 1).toFloat()
-                name = "${book.name} (${book.size})"
-                url = "$chapterListUrl/${book.id}"
+                chapter_number = book.metadata.numberSort
+                name = "${decimalFormat.format(book.metadata.numberSort)} - ${book.metadata.title} (${book.size})"
+                url = "$baseUrl/api/v1/books/${book.id}"
                 date_upload = parseDate(book.lastModified)
             }
         }.sortedByDescending { it.chapter_number }
@@ -115,10 +158,14 @@ open class Komga : ConfigurableSource, HttpSource() {
 
     private fun SeriesDto.toSManga(): SManga =
         SManga.create().apply {
-            title = this@toSManga.name
-            url = "/api/v1/series/${this@toSManga.id}"
-            thumbnail_url = "$baseUrl/api/v1/series/${this@toSManga.id}/thumbnail"
-            status = SManga.UNKNOWN
+            title = metadata.title
+            url = "/api/v1/series/$id"
+            thumbnail_url = "$baseUrl/api/v1/series/$id/thumbnail"
+            status = when (metadata.status) {
+                "ONGOING" -> SManga.ONGOING
+                "ENDED" -> SManga.COMPLETED
+                else -> SManga.UNKNOWN
+            }
         }
 
     private fun parseDate(date: String?): Long =
@@ -140,17 +187,26 @@ open class Komga : ConfigurableSource, HttpSource() {
 
     private class LibraryFilter(val id: Long, name: String) : Filter.CheckBox(name, false)
     private class LibraryGroup(libraries: List<LibraryFilter>) : Filter.Group<LibraryFilter>("Libraries", libraries)
+    private class SeriesSort : Filter.Sort("Sort", arrayOf("Alphabetically", "Date added", "Date updated"), Selection(0, true))
+    private class StatusFilter(name: String) : Filter.CheckBox(name, false)
+    private class StatusGroup(filters: List<StatusFilter>) : Filter.Group<StatusFilter>("Status", filters)
+    private class UnreadOnly : Filter.CheckBox("Unread only", false)
 
     override fun getFilterList(): FilterList =
         FilterList(
-            LibraryGroup(libraries.map { LibraryFilter(it.id, it.name) }.sortedBy { it.name })
+            UnreadOnly(),
+            LibraryGroup(libraries.map { LibraryFilter(it.id, it.name) }.sortedBy { it.name }),
+            StatusGroup(listOf("Ongoing", "Ended", "Abandoned", "Hiatus").map { StatusFilter(it) }),
+            SeriesSort()
         )
 
     private var libraries = emptyList<LibraryDto>()
 
-    override val name = "Komga"
+    override val name = "Komga${if (suffix.isNotBlank()) " ($suffix)" else ""}"
     override val lang = "en"
     override val supportsLatest = true
+
+    private val decimalFormat: DecimalFormat by lazy { DecimalFormat("0.#") }
 
     override val baseUrl by lazy { getPrefBaseUrl() }
     private val username by lazy { getPrefUsername() }
@@ -178,13 +234,46 @@ open class Komga : ConfigurableSource, HttpSource() {
             }
             .build()
 
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
         screen.addPreference(screen.editTextPreference(ADDRESS_TITLE, ADDRESS_DEFAULT, baseUrl))
         screen.addPreference(screen.editTextPreference(USERNAME_TITLE, USERNAME_DEFAULT, username))
-        screen.addPreference(screen.editTextPreference(PASSWORD_TITLE, PASSWORD_DEFAULT, password))
+        screen.addPreference(screen.editTextPreference(PASSWORD_TITLE, PASSWORD_DEFAULT, password, true))
     }
 
-    private fun PreferenceScreen.editTextPreference(title: String, default: String, value: String): EditTextPreference {
+    private fun androidx.preference.PreferenceScreen.editTextPreference(title: String, default: String, value: String, isPassword: Boolean = false): androidx.preference.EditTextPreference {
+        return androidx.preference.EditTextPreference(context).apply {
+            key = title
+            this.title = title
+            summary = value
+            this.setDefaultValue(default)
+            dialogTitle = title
+
+            if (isPassword) {
+                setOnBindEditTextListener {
+                    it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                }
+            }
+
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val res = preferences.edit().putString(title, newValue as String).commit()
+                    Toast.makeText(context, "Restart Tachiyomi to apply new setting.", Toast.LENGTH_LONG).show()
+                    res
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }
+    }
+
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        screen.addPreference(screen.supportEditTextPreference(ADDRESS_TITLE, ADDRESS_DEFAULT, baseUrl))
+        screen.addPreference(screen.supportEditTextPreference(USERNAME_TITLE, USERNAME_DEFAULT, username))
+        screen.addPreference(screen.supportEditTextPreference(PASSWORD_TITLE, PASSWORD_DEFAULT, password))
+    }
+
+    private fun PreferenceScreen.supportEditTextPreference(title: String, default: String, value: String): EditTextPreference {
         return EditTextPreference(context).apply {
             key = title
             this.title = title
@@ -195,8 +284,7 @@ open class Komga : ConfigurableSource, HttpSource() {
             setOnPreferenceChangeListener { _, newValue ->
                 try {
                     val res = preferences.edit().putString(title, newValue as String).commit()
-                    Toast.makeText(context, "Restart Tachiyomi to apply new setting."
-                        , Toast.LENGTH_LONG).show()
+                    Toast.makeText(context, "Restart Tachiyomi to apply new setting.", Toast.LENGTH_LONG).show()
                     res
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -223,7 +311,6 @@ open class Komga : ConfigurableSource, HttpSource() {
                     emptyList()
                 }
             }, {})
-
     }
 
     companion object {

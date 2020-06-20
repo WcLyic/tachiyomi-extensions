@@ -5,11 +5,11 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.Response
-import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import okhttp3.Response
+import org.jsoup.nodes.Element
 
 class NaverWebtoon : NaverComicBase("webtoon") {
     override val name = "Naver Webtoon"
@@ -59,7 +59,7 @@ class NaverChallenge : NaverComicChallengeBase("challenge") {
         while (document.select(paginationNextPageSelector).hasText()) {
             document.select(paginationNextPageSelector).let {
                 document = client.newCall(GET(it.attr("abs:href"))).execute().asJsoup()
-                document.select(chapterListSelector()).map { chapters.add(chapterFromElement(it)) }
+                document.select(chapterListSelector()).map { element -> chapters.add(chapterFromElement(element)) }
             }
         }
         return chapters

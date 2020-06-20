@@ -2,16 +2,20 @@ package eu.kanade.tachiyomi.extension.id.komikindo
 
 import android.annotation.SuppressLint
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.text.SimpleDateFormat
+import java.util.Calendar
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.*
 
 class KomikIndo : ParsedHttpSource() {
 
@@ -22,7 +26,7 @@ class KomikIndo : ParsedHttpSource() {
     override val client: OkHttpClient = network.cloudflareClient
 
     override fun popularMangaRequest(page: Int): Request {
-        val url = if (page == 1) "$baseUrl" else "$baseUrl/page/$page"
+        val url = if (page == 1) baseUrl else "$baseUrl/page/$page"
         return GET(url, headers)
     }
 
@@ -33,7 +37,7 @@ class KomikIndo : ParsedHttpSource() {
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         var builtUrl = if (page == 1) "$baseUrl/manga/" else "$baseUrl/manga/page/$page/"
-        if (!query.equals("")) {
+        if (query != "") {
             builtUrl = if (page == 1) "$baseUrl/search/$query/" else "$baseUrl/search/$query/page/$page/"
         } else if (filters.size > 0) {
             filters.forEach { filter ->
@@ -81,17 +85,17 @@ class KomikIndo : ParsedHttpSource() {
     override fun mangaDetailsParse(document: Document): SManga {
         val infoElm = document.select(".listinfo > ul > li")
         val manga = SManga.create()
-        infoElm.forEachIndexed { index, element ->
+        infoElm.forEach { element ->
             val infoTitle = element.select("b").text().toLowerCase()
-            var infoContent = element.text()
+            val infoContent = element.text()
             when {
                 infoTitle.contains("status") -> manga.status = parseStatus(infoContent)
                 infoTitle.contains("author") -> manga.author = infoContent
                 infoTitle.contains("artist") -> manga.artist = infoContent
                 infoTitle.contains("genres") -> {
                     val genres = mutableListOf<String>()
-                    element.select("a").forEach { element ->
-                        val genre = element.text()
+                    element.select("a").forEach { a ->
+                        val genre = a.text()
                         genres.add(genre)
                     }
                     manga.genre = genres.joinToString(", ")
@@ -147,7 +151,7 @@ class KomikIndo : ParsedHttpSource() {
         document.select("div#readerarea img").forEach { element ->
             val url = element.attr("src")
             i++
-            if (url.length != 0) {
+            if (url.isNotEmpty()) {
                 pages.add(Page(i, "", url))
             }
         }

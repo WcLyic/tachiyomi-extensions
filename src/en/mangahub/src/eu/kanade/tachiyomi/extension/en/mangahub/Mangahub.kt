@@ -2,24 +2,29 @@ package eu.kanade.tachiyomi.extension.en.mangahub
 
 import com.github.salomonbrys.kotson.fromJson
 import com.github.salomonbrys.kotson.get
+import com.github.salomonbrys.kotson.keys
 import com.github.salomonbrys.kotson.string
 import com.google.gson.Gson
 import com.google.gson.JsonObject
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import okhttp3.Request
-import okhttp3.HttpUrl
-import okhttp3.RequestBody
-import okhttp3.Response
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
 import java.net.URL
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
+import okhttp3.HttpUrl
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
+import org.jsoup.nodes.Document
+import org.jsoup.nodes.Element
 
 class Mangahub : ParsedHttpSource() {
 
@@ -67,7 +72,7 @@ class Mangahub : ParsedHttpSource() {
 
     override fun mangaDetailsParse(document: Document): SManga {
         val manga = SManga.create()
-        manga.title = document.select("h1._3xnDj").first().text()
+        manga.title = document.select("h1._3xnDj").first().ownText()
         manga.author = document.select("._3QCtP > div:nth-child(2) > div:nth-child(1) > span:nth-child(2)")?.first()?.text()
         manga.artist = document.select("._3QCtP > div:nth-child(2) > div:nth-child(2) > span:nth-child(2)")?.first()?.text()
         manga.genre = document.select("._3Czbn a")?.joinToString { it.text() }
@@ -142,29 +147,28 @@ class Mangahub : ParsedHttpSource() {
         val number = chapter.url.substringAfter("chapter-").removeSuffix("/")
         val body = RequestBody.create(null, "{\"query\":\"{chapter(x:m01,slug:\\\"$slug\\\",number:$number){id,title,mangaID,number,slug,date,pages,noAd,manga{id,title,slug,mainSlug,author,isWebtoon,isYaoi,isPorn,isSoftPorn,unauthFile,isLicensed}}}\"}")
 
-        return POST("https://api2.mangahub.io/graphql", jsonHeaders, body)
+        return POST("https://api.mghubcdn.com/graphql", jsonHeaders, body)
     }
 
     private val gson = Gson()
 
     override fun pageListParse(response: Response): List<Page> {
-        val pages = mutableListOf<Page>()
-        val images = gson.fromJson<JsonObject>(response.body()!!.string())["data"]["chapter"]["pages"].string
+        val cdn = "https://img.mghubcdn.com/file/imghub"
+
+        return gson.fromJson<JsonObject>(response.body()!!.string())["data"]["chapter"]["pages"].string
             .removeSurrounding("\"").replace("\\", "")
-            .let { gson.fromJson<JsonObject>(it) }
-
-        for (i in 1 .. images.size()) {
-            pages.add(Page(i - 1, "", "https://cdn.mangahub.io/file/imghub/${images["$i"].string}"))
-        }
-
-        return pages
+            .let { cleaned ->
+                val jsonObject = gson.fromJson<JsonObject>(cleaned)
+                jsonObject.keys().map { key -> jsonObject[key].string }
+            }
+            .mapIndexed { i, tail -> Page(i, "", "$cdn/$tail") }
     }
 
     override fun pageListParse(document: Document): List<Page> = throw UnsupportedOperationException("Not used")
 
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
 
-    //https://mangahub.io/search/page/1?q=a&order=POPULAR&genre=all
+    // https://mangahub.io/search/page/1?q=a&order=POPULAR&genre=all
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = HttpUrl.parse("$baseUrl/search/page/$page")?.newBuilder()!!.addQueryParameter("q", query)
         (if (filters.isEmpty()) getFilterList() else filters).forEach { filter ->
@@ -200,7 +204,7 @@ class Mangahub : ParsedHttpSource() {
         }
     }
 
-    private class OrderBy(orders: Array<Order>) : Filter.Select<Order>("Order", orders,0)
+    private class OrderBy(orders: Array<Order>) : Filter.Select<Order>("Order", orders, 0)
     private class GenreList(genres: Array<Genre>) : Filter.Select<Genre>("Genres", genres, 0)
 
     override fun getFilterList() = FilterList(

@@ -2,14 +2,18 @@ package eu.kanade.tachiyomi.extension.en.readmangatoday
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.util.Calendar
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.util.*
 
 class Readmangatoday : ParsedHttpSource() {
 
@@ -140,18 +144,25 @@ class Readmangatoday : ParsedHttpSource() {
             val timeAgo = Integer.parseInt(dateWords[0])
             val calendar = Calendar.getInstance()
 
-            if (dateWords[1].contains("Minute")) {
-                calendar.add(Calendar.MINUTE, -timeAgo)
-            } else if (dateWords[1].contains("Hour")) {
-                calendar.add(Calendar.HOUR_OF_DAY, -timeAgo)
-            } else if (dateWords[1].contains("Day")) {
-                calendar.add(Calendar.DAY_OF_YEAR, -timeAgo)
-            } else if (dateWords[1].contains("Week")) {
-                calendar.add(Calendar.WEEK_OF_YEAR, -timeAgo)
-            } else if (dateWords[1].contains("Month")) {
-                calendar.add(Calendar.MONTH, -timeAgo)
-            } else if (dateWords[1].contains("Year")) {
-                calendar.add(Calendar.YEAR, -timeAgo)
+            when {
+                dateWords[1].contains("Minute") -> {
+                    calendar.add(Calendar.MINUTE, -timeAgo)
+                }
+                dateWords[1].contains("Hour") -> {
+                    calendar.add(Calendar.HOUR_OF_DAY, -timeAgo)
+                }
+                dateWords[1].contains("Day") -> {
+                    calendar.add(Calendar.DAY_OF_YEAR, -timeAgo)
+                }
+                dateWords[1].contains("Week") -> {
+                    calendar.add(Calendar.WEEK_OF_YEAR, -timeAgo)
+                }
+                dateWords[1].contains("Month") -> {
+                    calendar.add(Calendar.MONTH, -timeAgo)
+                }
+                dateWords[1].contains("Year") -> {
+                    calendar.add(Calendar.YEAR, -timeAgo)
+                }
             }
 
             return calendar.timeInMillis
@@ -165,13 +176,9 @@ class Readmangatoday : ParsedHttpSource() {
     }
 
     override fun pageListParse(document: Document): List<Page> {
-        val pages = mutableListOf<Page>()
-
-        document.select("div.content-list img").forEachIndexed{ i, img ->
-            pages.add(Page(i, "", img.attr("abs:src")))
+        return document.select("div.content-list > img").mapIndexed { i, img ->
+            Page(i, "", img.attr("abs:src"))
         }
-
-        return pages
     }
 
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
@@ -191,7 +198,7 @@ class Readmangatoday : ParsedHttpSource() {
     )
 
     // [...document.querySelectorAll("ul.manga-cat span")].map(el => `Genre("${el.nextSibling.textContent.trim()}", ${el.getAttribute('data-id')})`).join(',\n')
-    // http://www.readmanga.today/advanced-search
+    // https://www.readmng.com/advanced-search
     private fun getGenreList() = listOf(
             Genre("Action", 2),
             Genre("Adventure", 4),

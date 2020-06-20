@@ -4,12 +4,16 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
+import java.text.SimpleDateFormat
+import java.util.Locale
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.*
 
-open class WebtoonsDefault(override val lang: String, override val langCode: String = lang) : Webtoons(lang, langCode) {
+open class WebtoonsDefault(
+    override val lang: String,
+    override val langCode: String = lang,
+    override val localeForCookie: String = lang
+) : Webtoons(lang, langCode, lang) {
 
     override fun chapterListSelector() = "ul#_episodeList > li[id*=episode]"
 
@@ -34,7 +38,7 @@ open class WebtoonsDefault(override val lang: String, override val langCode: Str
         return SimpleDateFormat("MMM d, yyyy", Locale.ENGLISH).parse(date).time
     }
 
-    override fun chapterListRequest(manga: SManga) = GET("http://m.webtoons.com" + manga.url, mobileHeaders)
+    override fun chapterListRequest(manga: SManga) = GET("https://m.webtoons.com" + manga.url, mobileHeaders)
 
     override fun pageListParse(document: Document) = document.select("div#_imageList > img").mapIndexed { i, element -> Page(i, "", element.attr("data-url")) }
 }

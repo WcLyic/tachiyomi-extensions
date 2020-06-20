@@ -9,15 +9,23 @@ import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
-import eu.kanade.tachiyomi.source.model.*
-import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import okhttp3.*
-import org.jsoup.nodes.Document
-import org.jsoup.nodes.Element
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
+import eu.kanade.tachiyomi.source.online.HttpSource
+import eu.kanade.tachiyomi.util.asJsoup
+import java.util.Date
+import okhttp3.MediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import okhttp3.Response
 import rx.Observable
-import java.util.*
 
-open class NineHentai : ParsedHttpSource() {
+open class NineHentai : HttpSource() {
 
     final override val baseUrl = "https://9hentai.com"
 
@@ -92,25 +100,25 @@ open class NineHentai : ParsedHttpSource() {
         val chapterId = manga.url.substringAfter("/g/").toInt()
         chapter.url = "/g/$chapterId"
         chapter.name = "chapter"
-        //api doesnt return date so setting to current date for now
+        // api doesnt return date so setting to current date for now
         chapter.date_upload = Date().time
 
         return Observable.just(listOf(chapter))
     }
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val includedTags =  mutableListOf<Tag>()
+        val includedTags = mutableListOf<Tag>()
         val excludedTags = mutableListOf<Tag>()
         var sort = 0
         for (filter in if (filters.isEmpty()) getFilterList() else filters) {
-            when(filter){
+            when (filter) {
                 is GenreList -> {
                     filter.state.forEach { f ->
                         if (!f.isIgnored()) {
                             if (f.isExcluded())
-                               excludedTags.add(f)
+                                excludedTags.add(f)
                             else
-                               includedTags.add(f)
+                                includedTags.add(f)
                         }
                     }
                 }
@@ -122,8 +130,15 @@ open class NineHentai : ParsedHttpSource() {
         return POST(baseUrl + SEARCH_URL, headers, buildRequestBody(query, page, sort, includedTags, excludedTags))
     }
 
-    override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return Observable.just(manga)
+    override fun mangaDetailsParse(response: Response): SManga {
+        return SManga.create().apply {
+            response.asJsoup().select("div.card-body").firstOrNull()?.let { info ->
+                title = info.select("h1").text()
+                genre = info.select("div.field-name:contains(Tag:) a.tag").joinToString { it.text() }
+                artist = info.select("div.field-name:contains(Artist:) a.tag").joinToString { it.text() }
+                thumbnail_url = info.select("div#cover v-lazy-image").attr("abs:src")
+            }
+        }
     }
 
     override fun pageListRequest(chapter: SChapter): Request {
@@ -153,7 +168,7 @@ open class NineHentai : ParsedHttpSource() {
     }
 
     private fun buildRequestBody(searchText: String = "", page: Int, sort: Int = 0, includedTags: MutableList<Tag> = arrayListOf(), excludedTags: MutableList<Tag> = arrayListOf()): RequestBody {
-        val json = gson.toJson(mapOf("search" to SearchRequest(text = searchText, page = page-1, sort = sort, tag = mapOf("items" to Items(includedTags, excludedTags)))))
+        val json = gson.toJson(mapOf("search" to SearchRequest(text = searchText, page = page - 1, sort = sort, tag = mapOf("items" to Items(includedTags, excludedTags)))))
         return RequestBody.create(MEDIA_TYPE, json)
     }
 
@@ -165,14 +180,14 @@ open class NineHentai : ParsedHttpSource() {
 
     private class Sorting : Filter.Sort("Sorting",
             arrayOf("Newest", "Popular Right now", "Most Fapped", "Most Viewed", "By Title"),
-            Filter.Sort.Selection(1, false))
+            Selection(1, false))
 
     override fun getFilterList() = FilterList(
             Sorting(),
             GenreList(NHTags.getTagsList())
     )
 
-    override fun imageUrlParse(document: Document): String = ""
+    override fun imageUrlParse(response: Response): String = throw Exception("Not Used")
 
     override fun chapterListRequest(manga: SManga): Request = throw Exception("Not Used")
 
@@ -183,34 +198,6 @@ open class NineHentai : ParsedHttpSource() {
     override fun searchMangaParse(response: Response): MangasPage = throw Exception("Not Used")
 
     override fun chapterListParse(response: Response): List<SChapter> = throw Exception("Not Used")
-
-    override fun chapterFromElement(element: Element): SChapter = throw Exception("Not used")
-
-    override fun pageListParse(document: Document) = throw Exception("Not used")
-
-    override fun chapterListSelector(): String = throw Exception("Not used")
-
-    override fun latestUpdatesFromElement(element: Element): SManga = throw Exception("Not used")
-
-    override fun latestUpdatesNextPageSelector(): String? = throw Exception("Not used")
-
-    override fun latestUpdatesSelector(): String = throw Exception("Not used")
-
-    override fun mangaDetailsParse(response: Response): SManga = throw Exception("Not Used")
-
-    override fun mangaDetailsParse(document: Document): SManga = throw Exception("Not used")
-
-    override fun popularMangaFromElement(element: Element): SManga = throw Exception("Not used")
-
-    override fun popularMangaNextPageSelector(): String? = throw Exception("Not used")
-
-    override fun popularMangaSelector(): String = throw Exception("Not used")
-
-    override fun searchMangaFromElement(element: Element): SManga = throw Exception("Not used")
-
-    override fun searchMangaNextPageSelector(): String? = throw Exception("Not used")
-
-    override fun searchMangaSelector(): String = throw Exception("Not used")
 
     companion object {
         private val MEDIA_TYPE = MediaType.parse("application/json; charset=utf-8")

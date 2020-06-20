@@ -1,17 +1,20 @@
 package eu.kanade.tachiyomi.extension.ru.mangahub
 
+import com.google.gson.JsonParser
+import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.text.SimpleDateFormat
+import java.util.Locale
 import okhttp3.Headers
+import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.*
 
 open class Mangahub : ParsedHttpSource() {
 
@@ -22,6 +25,13 @@ open class Mangahub : ParsedHttpSource() {
     override val lang = "ru"
 
     override val supportsLatest = true
+
+    private val rateLimitInterceptor = RateLimitInterceptor(2)
+
+    private val jsonParser = JsonParser()
+
+    override val client: OkHttpClient = network.client.newBuilder()
+        .addNetworkInterceptor(rateLimitInterceptor).build()
 
     override fun popularMangaRequest(page: Int): Request =
         GET("$baseUrl/explore?filter[sort]=rating&filter[dateStart][left_number]=1900&filter[dateStart][right_number]=2099&page=$page", headers)
@@ -49,12 +59,18 @@ open class Mangahub : ParsedHttpSource() {
     override fun latestUpdatesNextPageSelector() = popularMangaNextPageSelector()
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        return GET("$baseUrl/search/manga?query=$query&sort=score&page=$page")
+        return GET("$baseUrl/search/manga?query=$query&sort=rating_short&page=$page")
     }
 
-    override fun searchMangaSelector() = popularMangaSelector()
+    override fun searchMangaSelector() = "div.comic-grid-col-xl"
 
-    override fun searchMangaFromElement(element: Element): SManga = popularMangaFromElement(element)
+    override fun searchMangaFromElement(element: Element): SManga {
+        val manga = SManga.create()
+        manga.thumbnail_url = element.select("div.comic-grid-image").attr("data-background-image")
+        manga.title = element.select("a.comic-grid-name").text()
+        manga.setUrlWithoutDomain(element.select("a.comic-grid-name").attr("href"))
+        return manga
+    }
 
     override fun searchMangaNextPageSelector(): String? = popularMangaNextPageSelector()
 
@@ -98,11 +114,13 @@ open class Mangahub : ParsedHttpSource() {
     }
 
     override fun pageListParse(document: Document): List<Page> {
-        val pictures = document.select("div.row > div > div.mb-4").attr("data-js-scans").replace("&quot;", "\"").replace("\\/", "/")
-        val r = Regex("""\/\/([\w\.\/])+""")
+        val chapInfo = document.select("reader").attr("data-reader-store").replace("&quot;", "\"").replace("\\/", "/")
+        val chapter = jsonParser.parse(chapInfo).asJsonObject
+        val scans = chapter["scans"].asJsonArray
+
         val pages = mutableListOf<Page>()
-        for ((index, value) in r.findAll(pictures).withIndex()) {
-            pages.add(Page(index = index, imageUrl = "http:${value.value}"))
+        scans.mapIndexed { i, page ->
+            pages.add(Page(i, "", "https:${page.asJsonObject.get("src").asString}"))
         }
 
         return pages

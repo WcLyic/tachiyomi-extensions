@@ -2,16 +2,21 @@ package eu.kanade.tachiyomi.extension.ru.mangachan
 
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.SimpleDateFormat
+import java.util.Locale
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.*
 
 class Mangachan : ParsedHttpSource() {
 
@@ -30,14 +35,13 @@ class Mangachan : ParsedHttpSource() {
     override val client: OkHttpClient = network.client.newBuilder()
         .addNetworkInterceptor(rateLimitInterceptor).build()
 
-
     override fun popularMangaRequest(page: Int): Request =
             GET("$baseUrl/mostfavorites?offset=${20 * (page - 1)}", headers)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         var pageNum = 1
         when {
-            page <  1 -> pageNum = 1
+            page < 1 -> pageNum = 1
             page >= 1 -> pageNum = page
         }
         val url = if (query.isNotEmpty()) {
@@ -173,10 +177,15 @@ class Mangachan : ParsedHttpSource() {
         val infoElement = document.select("table.mangatitle").first()
         val descElement = document.select("div#description").first()
         val imgElement = document.select("img#cover").first()
-
+        val rawCategory = infoElement.select("tr:eq(1) > td:eq(1)").text()
+        val category = if (rawCategory.isNotEmpty()) {
+            rawCategory.toLowerCase()
+        } else {
+            "манга"
+        }
         val manga = SManga.create()
         manga.author = infoElement.select("tr:eq(2) > td:eq(1)").text()
-        manga.genre = infoElement.select("tr:eq(5) > td:eq(1)").text()
+        manga.genre = infoElement.select("tr:eq(5) > td:eq(1)").text().split(",").plusElement(category).joinToString { it.trim() }
         manga.status = parseStatus(infoElement.select("tr:eq(4) > td:eq(1)").text())
         manga.description = descElement.textNodes().first().text()
         manga.thumbnail_url = imgElement.attr("src")
@@ -224,8 +233,7 @@ class Mangachan : ParsedHttpSource() {
     private class Status : Filter.Select<String>("Статус", arrayOf("Все", "Перевод завершен", "Выпуск завершен", "Онгоинг", "Новые главы"))
     private class OrderBy : Filter.Sort("Сортировка",
             arrayOf("Дата", "Популярность", "Имя", "Главы"),
-            Filter.Sort.Selection(1, false))
-
+            Selection(1, false))
 
     override fun getFilterList() = FilterList(
             Status(),
@@ -233,10 +241,9 @@ class Mangachan : ParsedHttpSource() {
             GenreList(getGenreList())
     )
 
-
     /* [...document.querySelectorAll("li.sidetag > a:nth-child(1)")]
     *  .map(el => `Genre("${el.getAttribute('href').substr(6)}")`).join(',\n')
-    *  on http://mangachan.me/
+    *  on https://mangachan.me/
     */
     private fun getGenreList() = listOf(
             Genre("18_плюс"),

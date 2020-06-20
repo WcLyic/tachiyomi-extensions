@@ -3,17 +3,25 @@ package eu.kanade.tachiyomi.extension.ru.readmanga
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.*
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.regex.Pattern
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.*
-import java.util.regex.Pattern
 
 class Readmanga : ParsedHttpSource() {
 
@@ -21,7 +29,7 @@ class Readmanga : ParsedHttpSource() {
 
     override val name = "Readmanga"
 
-    override val baseUrl = "http://readmanga.me"
+    override val baseUrl = "https://readmanga.me"
 
     override val lang = "ru"
 
@@ -75,7 +83,7 @@ class Readmanga : ParsedHttpSource() {
                 }
             }
         }
-        if (!query.isEmpty()) {
+        if (query.isNotEmpty()) {
             url.addQueryParameter("q", query)
         }
         return GET(url.toString().replace("=%3D", "="), headers)
@@ -90,32 +98,28 @@ class Readmanga : ParsedHttpSource() {
 
     override fun mangaDetailsParse(document: Document): SManga {
         val infoElement = document.select("div.leftContent").first()
+        val rawCategory = infoElement.select("span.elem_category").text()
+        val category = if (rawCategory.isNotEmpty()) {
+            rawCategory.toLowerCase()
+        } else {
+            "манга"
+        }
 
         val manga = SManga.create()
         manga.author = infoElement.select("span.elem_author").first()?.text()
         manga.artist = infoElement.select("span.elem_illustrator").first()?.text()
-        manga.genre = infoElement.select("span.elem_genre").text().replace(" ,", ",")
+        manga.genre = infoElement.select("span.elem_genre").text().split(",").plusElement(category).joinToString { it.trim() }
         manga.description = infoElement.select("div.manga-description").text()
-        manga.status = parseStatus(infoElement)
+        manga.status = parseStatus(infoElement.html())
         manga.thumbnail_url = infoElement.select("img").attr("data-full")
         return manga
     }
 
-    private fun parseStatus(element: Element): Int {
-        val hiddenWarningMessage = element.select("span.hide > h3").first()
-        val html = element.html()
-        return if (hiddenWarningMessage != null) {
-            when {
-                html.contains("<b>Перевод:</b> продолжается") -> SManga.ONGOING
-                html.contains("<h1 class=\"names\"> Сингл") || html.contains("<b>Перевод:</b> завершен") -> SManga.COMPLETED
-                else -> SManga.UNKNOWN
-            }
-        } else {
-            when {
-                html.contains("<h3>Запрещена публикация произведения по копирайту</h3>") -> SManga.LICENSED
-                else -> SManga.UNKNOWN
-            }
-        }
+    private fun parseStatus(element: String): Int = when {
+        element.contains("Запрещена публикация произведения по копирайту") -> SManga.LICENSED
+        element.contains("<h1 class=\"names\"> Сингл") || element.contains("<b>Перевод:</b> завершен") -> SManga.COMPLETED
+        element.contains("<b>Перевод:</b> продолжается") -> SManga.ONGOING
+        else -> SManga.UNKNOWN
     }
 
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> {
@@ -151,7 +155,7 @@ class Readmanga : ParsedHttpSource() {
             }
         }
         val dots = chapter.name.indexOf("…")
-        val numbers = chapter.name.findAnyOf(IntRange(0, 9).map { it.toString() })!!.first
+        val numbers = chapter.name.findAnyOf(IntRange(0, 9).map { it.toString() })?.first ?: 0
 
         if (dots in 0 until numbers) {
             chapter.name = chapter.name.substringAfter("…").trim()
@@ -192,7 +196,7 @@ class Readmanga : ParsedHttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val html = response.body()!!.string()
         val beginIndex = html.indexOf("rm_h.init( [")
-        val endIndex = html.indexOf("], 0, false);", beginIndex)
+        val endIndex = html.indexOf(");", beginIndex)
         val trimmedHtml = html.substring(beginIndex, endIndex)
 
         val p = Pattern.compile("'.*?','.*?',\".*?\"")
@@ -206,7 +210,11 @@ class Readmanga : ParsedHttpSource() {
             val url = if (urlParts[1].isEmpty() && urlParts[2].startsWith("/static/")) {
                 baseUrl + urlParts[2]
             } else {
-                urlParts[1] + urlParts[0] + urlParts[2]
+                if (urlParts[1].endsWith("/manga/")) {
+                    urlParts[0] + urlParts[2]
+                } else {
+                    urlParts[1] + urlParts[0] + urlParts[2]
+                }
             }
             pages.add(Page(i++, "", url))
         }
@@ -234,7 +242,7 @@ class Readmanga : ParsedHttpSource() {
     /* [...document.querySelectorAll("tr.advanced_option:nth-child(1) > td:nth-child(3) span.js-link")]
     *  .map(el => `Genre("${el.textContent.trim()}", $"{el.getAttribute('onclick')
     *  .substr(31,el.getAttribute('onclick').length-33)"})`).join(',\n')
-    *  on http://readmanga.me/search/advanced
+    *  on https://readmanga.me/search/advanced
     */
     override fun getFilterList() = FilterList(
             Category(getCategoryList()),

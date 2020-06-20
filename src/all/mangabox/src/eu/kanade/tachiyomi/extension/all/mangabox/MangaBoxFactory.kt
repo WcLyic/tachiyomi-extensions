@@ -1,119 +1,134 @@
 package eu.kanade.tachiyomi.extension.all.mangabox
 
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.SimpleDateFormat
+import java.util.Locale
+import okhttp3.Headers
 import okhttp3.Request
-import okhttp3.RequestBody
 import okhttp3.Response
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.*
 
 class MangaBoxFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         Mangakakalot(),
         Manganelo(),
-        Mangafree(),
         Mangabat(),
-        KonoBasho(),
-        MangaOnl(),
-        ChapterManga()
+        OtherMangakakalot(),
+        Mangairo()
     )
 }
 
-//TODO: Alternate search/filters for some sources that don't use query parameters
-
-class Mangakakalot : MangaBox("Mangakakalot", "http://mangakakalot.com", "en")
-
-class Manganelo : MangaBox("Manganelo", "https://manganelo.com", "en")
-
-class Mangafree : MangaBox("Mangafree", "http://mangafree.online", "en") {
-    override val popularUrlPath = "hotmanga"
-    override val latestUrlPath = "latest"
-    override fun chapterListSelector() = "div#ContentPlaceHolderLeft_list_chapter_comic div.row"
-    override fun getFilterList() = FilterList()
+class Mangakakalot : MangaBox("Mangakakalot", "https://mangakakalot.com", "en") {
+    override fun headersBuilder(): Headers.Builder = super.headersBuilder().set("Referer", "https://manganelo.com") // for covers
+    override val simpleQueryPath = "search/story/"
+    override fun searchMangaSelector() = "${super.searchMangaSelector()}, div.list-truyen-item-wrap"
 }
 
-class Mangabat : MangaBox("Mangabat", "https://mangabat.com", "en") {
-    override fun popularMangaSelector() = "div.item"
-    override fun latestUpdatesSelector() = "div.update_item"
-    override fun searchMangaSelector() = "div.update_item"
-    override val simpleQueryPath = "search_manga/"
-    override val mangaDetailsMainSelector = "div.truyen_info"
-    override val thumbnailSelector = "img.info_image_manga"
-    override val descriptionSelector = "div#contentm"
-    override val pageListSelector = "div.vung_doc img"
+class Manganelo : MangaBox("Manganelo", "https://manganelo.com", "en") {
+    // Nelo's date format is part of the base class
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/genre-all/$page?type=topview", headers)
+    override fun popularMangaSelector() = "div.content-genres-item"
+    override val latestUrlPath = "genre-all/"
+    override val simpleQueryPath = "search/story/"
+    override fun searchMangaSelector() = "div.search-story-item, div.content-genres-item"
+    override fun getAdvancedGenreFilters(): List<AdvGenre> = getGenreFilters()
+        .drop(1)
+        .map { AdvGenre(it.first, it.second) }
 }
 
-class KonoBasho : MangaBox("Kono-Basho", "https://kono-basho.com", "en")
-
-class MangaOnl : MangaBox("MangaOnl", "https://mangaonl.com", "en") {
-    override val popularUrlPath = "story-list-ty-topview-st-all-ca-all-1"
-    override val latestUrlPath = "story-list-ty-latest-st-all-ca-all-1"
-    override fun popularMangaSelector() = "div.story_item"
-    override val mangaDetailsMainSelector = "div.panel_story_info"
-    override val thumbnailSelector = "img.story_avatar"
-    override val descriptionSelector = "div.panel_story_info_description"
-    override fun chapterListSelector() = "div.chapter_list_title + ul li"
-    override val pageListSelector = "div.container_readchapter img"
-    override fun getFilterList() = FilterList()
+class Mangabat : MangaBox("Mangabat", "https://mangabat.com", "en", SimpleDateFormat("MMM dd,yy", Locale.ENGLISH)) {
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga-list-all/$page?type=topview", headers)
+    override fun popularMangaSelector() = "div.list-story-item"
+    override val latestUrlPath = "manga-list-all/"
+    override fun searchMangaSelector() = "div.list-story-item"
+    override fun getAdvancedGenreFilters(): List<AdvGenre> = getGenreFilters()
+        .drop(1)
+        .map { AdvGenre(it.first, it.second) }
 }
 
-class ChapterManga : MangaBox("ChapterManga", "https://chaptermanga.com", "en", SimpleDateFormat("dd-MM-yyyy", Locale.ENGLISH)) {
-    override val popularUrlPath = "hot-manga"
-    override val latestUrlPath = "read-latest-manga"
-    override fun chapterListRequest(manga: SManga): Request {
-        val response = client.newCall(GET(baseUrl + manga.url, headers)).execute()
-        val cookie = response.headers("set-cookie")
-            .filter{ it.contains("laravel_session") }
-            .map{ it.substringAfter("=").substringBefore(";") }
-        val document = response.asJsoup()
-        val token = document.select("meta[name=\"csrf-token\"]").attr("content")
-        val script = document.select("script:containsData(manga_slug)").first()
-        val mangaSlug = script.data().substringAfter("manga_slug : \'").substringBefore("\'")
-        val mangaId = script.data().substringAfter("manga_id : \'").substringBefore("\'")
-        val tokenHeaders = headers.newBuilder()
-            .add("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
-            .add("X-CSRF-Token", token)
-            .add("Cookie", cookie.toString())
-            .build()
-        val body = RequestBody.create(null, "manga_slug=$mangaSlug&manga_id=$mangaId")
-
-        return POST("$baseUrl/get-chapter-list", tokenHeaders, body)
-    }
-    override fun chapterListSelector() = "div.row"
-    override fun getFilterList() = FilterList()
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val site = baseUrl.substringAfter("//")
-        val searchHeaders = headers.newBuilder().add("Content-Type", "application/x-www-form-urlencoded").build()
-        val body = RequestBody.create(null, "q=site%3A$site+inurl%3A$site%2Fread-manga+${query.replace(" ", "+")}&b=&kl=us-en")
-
-        return POST("https://duckduckgo.com/html/", searchHeaders, body)
-    }
+class OtherMangakakalot : MangaBox("Mangakakalots (unoriginal)", "https://mangakakalots.com", "en") {
+    override fun searchMangaSelector(): String = "${super.searchMangaSelector()}, div.list-truyen-item-wrap"
     override fun searchMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
-        val mangas = mutableListOf<SManga>()
+        val mangas = document.select(searchMangaSelector()).map { mangaFromElement(it) }
+        val hasNextPage = !response.request().url().toString()
+            .contains(document.select(searchMangaNextPageSelector()).attr("href"))
 
-        document.select(searchMangaSelector())
-            .filter{ it.text().startsWith("Read") }
-            .map{ mangas.add(searchMangaFromElement(it)) }
-
-        return MangasPage(mangas, false)
+        return MangasPage(mangas, hasNextPage)
     }
-    override fun searchMangaSelector() = "div.result h2 a"
-    override fun searchMangaFromElement(element: Element): SManga {
-        val manga = SManga.create()
-
-        manga.title = element.text().substringAfter("Read").substringBeforeLast("online").trim()
-        manga.setUrlWithoutDomain(element.attr("href"))
-
-        return manga
-    }
+    override fun searchMangaNextPageSelector() = "div.group_page a:last-of-type"
+    override fun getStatusFilters(): Array<Pair<String?, String>> = arrayOf(
+        Pair("all", "ALL"),
+        Pair("Completed", "Completed"),
+        Pair("Ongoing", "Ongoing")
+    )
+    override fun getGenreFilters(): Array<Pair<String?, String>> = arrayOf(
+        Pair("all", "ALL"),
+        Pair("Action", "Action"),
+        Pair("Adult", "Adult"),
+        Pair("Adventure", "Adventure"),
+        Pair("Comedy", "Comedy"),
+        Pair("Cooking", "Cooking"),
+        Pair("Doujinshi", "Doujinshi"),
+        Pair("Drama", "Drama"),
+        Pair("Ecchi", "Ecchi"),
+        Pair("Fantasy", "Fantasy"),
+        Pair("Gender bender", "Gender bender"),
+        Pair("Harem", "Harem"),
+        Pair("Historical", "Historical"),
+        Pair("Horror", "Horror"),
+        Pair("Isekai", "Isekai"),
+        Pair("Josei", "Josei"),
+        Pair("Manhua", "Manhua"),
+        Pair("Manhwa", "Manhwa"),
+        Pair("Martial arts", "Martial arts"),
+        Pair("Mature", "Mature"),
+        Pair("Mecha", "Mecha"),
+        Pair("Medical", "Medical"),
+        Pair("Mystery", "Mystery"),
+        Pair("One shot", "One shot"),
+        Pair("Psychological", "Psychological"),
+        Pair("Romance", "Romance"),
+        Pair("School life", "School life"),
+        Pair("Sci fi", "Sci fi"),
+        Pair("Seinen", "Seinen"),
+        Pair("Shoujo", "Shoujo"),
+        Pair("Shoujo ai", "Shoujo ai"),
+        Pair("Shounen", "Shounen"),
+        Pair("Shounen ai", "Shounen ai"),
+        Pair("Slice of life", "Slice of life"),
+        Pair("Smut", "Smut"),
+        Pair("Sports", "Sports"),
+        Pair("Supernatural", "Supernatural"),
+        Pair("Tragedy", "Tragedy"),
+        Pair("Webtoons", "Webtoons"),
+        Pair("Yaoi", "Yaoi"),
+        Pair("Yuri", "Yuri")
+    )
 }
 
+class Mangairo : MangaBox("Mangairo", "https://m.mangairo.com", "en", SimpleDateFormat("MMM-dd-yy", Locale.ENGLISH)) {
+    override val popularUrlPath = "manga-list/type-topview/ctg-all/state-all/page-"
+    override fun popularMangaSelector() = "div.story-item"
+    override val latestUrlPath = "manga-list/type-latest/ctg-all/state-all/page-"
+    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+        return GET("$baseUrl/$simpleQueryPath${normalizeSearchQuery(query)}?page=$page", headers)
+    }
+    override fun searchMangaSelector() = "div.story-item"
+    override fun searchMangaFromElement(element: Element): SManga = mangaFromElement(element, "h2 a")
+    override fun searchMangaNextPageSelector() = "div.group-page a.select + a:not(.go-p-end)"
+    override val mangaDetailsMainSelector = "${super.mangaDetailsMainSelector}, div.story_content"
+    override val thumbnailSelector = "${super.thumbnailSelector}, div.story_info_left img"
+    override val descriptionSelector = "${super.descriptionSelector}, div#story_discription p"
+    override fun chapterListSelector() = "${super.chapterListSelector()}, div#chapter_list li"
+    override val alternateChapterDateSelector = "p"
+    override val pageListSelector = "${super.pageListSelector}, div.panel-read-story img"
+    // will have to write a separate searchMangaRequest to get filters working for this source
+    override fun getFilterList() = FilterList()
+}

@@ -1,24 +1,28 @@
 package eu.kanade.tachiyomi.extension.ru.selfmanga
 
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.regex.Pattern
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.*
-import java.util.regex.Pattern
 
 class Selfmanga : ParsedHttpSource() {
 
     override val name = "Selfmanga"
 
-    override val baseUrl = "http://selfmanga.ru"
+    override val baseUrl = "https://selfmanga.ru"
 
     override val lang = "ru"
 
@@ -67,7 +71,7 @@ class Selfmanga : ParsedHttpSource() {
                 }
             }
         }
-        if (!query.isEmpty()) {
+        if (query.isNotEmpty()) {
             url.addQueryParameter("q", query)
         }
         return GET(url.toString().replace("=%3D", "="), headers)
@@ -143,7 +147,7 @@ class Selfmanga : ParsedHttpSource() {
     override fun pageListParse(response: Response): List<Page> {
         val html = response.body()!!.string()
         val beginIndex = html.indexOf("rm_h.init( [")
-        val endIndex = html.indexOf("], 0, false);", beginIndex)
+        val endIndex = html.indexOf(");", beginIndex)
         val trimmedHtml = html.substring(beginIndex, endIndex)
 
         val p = Pattern.compile("'.*?','.*?',\".*?\"")
@@ -157,7 +161,11 @@ class Selfmanga : ParsedHttpSource() {
             val url = if (urlParts[1].isEmpty() && urlParts[2].startsWith("/static/")) {
                 baseUrl + urlParts[2]
             } else {
-                urlParts[1] + urlParts[0] + urlParts[2]
+                if (urlParts[1].endsWith("/manga/")) {
+                    urlParts[0] + urlParts[2]
+                } else {
+                    urlParts[1] + urlParts[0] + urlParts[2]
+                }
             }
             pages.add(Page(i++, "", url))
         }
@@ -185,13 +193,12 @@ class Selfmanga : ParsedHttpSource() {
     /* [...document.querySelectorAll("tr.advanced_option:nth-child(1) > td:nth-child(3) span.js-link")]
     *  .map(el => `Genre("${el.textContent.trim()}", $"{el.getAttribute('onclick')
     *  .substr(31,el.getAttribute('onclick').length-33)"})`).join(',\n')
-    *  on http://selfmanga.ru/search/advanced
+    *  on https://selfmanga.ru/search/advanced
     */
     override fun getFilterList() = FilterList(
             Category(getCategoryList()),
             GenreList(getGenreList())
     )
-
 
     private fun getCategoryList() = listOf(
             Genre("Артбук", "el_5894"),

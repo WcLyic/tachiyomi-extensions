@@ -4,30 +4,43 @@ import android.app.Application
 import android.content.SharedPreferences
 import android.support.v7.preference.ListPreference
 import android.support.v7.preference.PreferenceScreen
-import com.github.salomonbrys.kotson.*
+import com.github.salomonbrys.kotson.array
+import com.github.salomonbrys.kotson.get
+import com.github.salomonbrys.kotson.int
+import com.github.salomonbrys.kotson.nullArray
+import com.github.salomonbrys.kotson.nullString
+import com.github.salomonbrys.kotson.obj
+import com.github.salomonbrys.kotson.string
 import com.google.gson.JsonElement
 import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.*
+import java.text.SimpleDateFormat
+import java.util.Locale
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.Response
 import org.jsoup.nodes.Element
 import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
-import java.text.SimpleDateFormat
-import java.util.*
-import android.util.Base64.decode as base64Decode
-
 
 class LibManga : ConfigurableSource, HttpSource() {
 
     private val preferences: SharedPreferences by lazy {
-        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+        Injekt.get<Application>().getSharedPreferences("source_${id}_2", 0x0000)
     }
 
     override val name: String = "Mangalib"
@@ -40,32 +53,45 @@ class LibManga : ConfigurableSource, HttpSource() {
 
     override val baseUrl: String = "https://mangalib.me"
 
-    private var imageServerUrl: String = when(preferences.getString(SERVER_PREF, "main")){
-        "main" -> "https://img2.mangalib.me"
-        else -> "https://img3.mangalib.me"
+    override fun headersBuilder() = Headers.Builder().apply {
+        add("User-Agent", "Mozilla/5.0 (Windows NT 6.3; WOW64)")
+        add("Accept", "*/*")
     }
 
     private val jsonParser = JsonParser()
+
+    private var server: String? = preferences.getString(SERVER_PREF, null)
+
+    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
+        val serverPref = androidx.preference.ListPreference(screen.context).apply {
+            key = SERVER_PREF
+            title = SERVER_PREF_Title
+            entries = arrayOf("Основной", "Второй (тестовый)", "Сжатия (эконом трафика)")
+            entryValues = arrayOf("secondary", "fourth", "compress")
+            summary = "%s"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                server = newValue.toString()
+                true
+            }
+        }
+
+        screen.addPreference(serverPref)
+    }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val serverPref = ListPreference(screen.context).apply {
             key = SERVER_PREF
             title = SERVER_PREF_Title
-            entries = arrayOf("Основной", "Второй")
-            entryValues = arrayOf("main", "alt")
+            entries = arrayOf("Основной", "Второй (тестовый)", "Сжатия (эконом трафика)")
+            entryValues = arrayOf("secondary", "fourth", "compress")
             summary = "%s"
 
             setOnPreferenceChangeListener { _, newValue ->
-                imageServerUrl = when(newValue){
-                    "main" -> "https://img2.mangalib.me"
-                    else -> "https://img3.mangalib.me"
-                }
+                server = newValue.toString()
                 true
             }
         }
-
-        if(!preferences.contains(SERVER_PREF))
-            preferences.edit().putString(SERVER_PREF, "main").apply()
 
         screen.addPreference(serverPref)
     }
@@ -76,9 +102,9 @@ class LibManga : ConfigurableSource, HttpSource() {
 
     override fun latestUpdatesParse(response: Response): MangasPage {
         val elements = response.asJsoup().select(latestUpdatesSelector)
-        val latestMangas =  elements?.map { latestUpdatesFromElement(it) }
+        val latestMangas = elements?.map { latestUpdatesFromElement(it) }
         if (latestMangas != null)
-            return MangasPage(latestMangas,false) // TODO: use API
+            return MangasPage(latestMangas, false) // TODO: use API
         return MangasPage(emptyList(), false)
     }
 
@@ -86,7 +112,7 @@ class LibManga : ConfigurableSource, HttpSource() {
         val link = element.select("a").first()
         val img = link.select("img").first()
         val manga = SManga.create()
-        manga.thumbnail_url = img.attr("data-src")
+        manga.thumbnail_url = baseUrl + img.attr("data-src").substringAfter(baseUrl)
             .replace("cover_thumb", "cover_250x350")
         manga.setUrlWithoutDomain(link.attr("href"))
         manga.title = img.attr("alt")
@@ -119,7 +145,7 @@ class LibManga : ConfigurableSource, HttpSource() {
         return fetchPopularMangaFromApi(page)
     }
 
-    private fun fetchPopularMangaFromApi(page : Int): Observable<MangasPage> {
+    private fun fetchPopularMangaFromApi(page: Int): Observable<MangasPage> {
         return client.newCall(POST("$baseUrl/filterlist?dir=desc&sort=views&page=$page", catalogHeaders()))
             .asObservableSuccess()
             .map { response ->
@@ -141,18 +167,31 @@ class LibManga : ConfigurableSource, HttpSource() {
     }
 
     private fun popularMangaFromElement(el: JsonElement) = SManga.create().apply {
+        val slug = el["slug"].string
         title = el["name"].string
-        thumbnail_url = "$baseUrl/uploads/" + if (el["cover"].nullInt != null)
-            "cover/${el["slug"].string}/cover/cover_250x350.jpg" else
-            "no-image.png"
-        url = "/" + el["slug"].string
+        thumbnail_url = "$baseUrl/uploads/cover/$slug/cover/cover_250x350.jpg"
+        url = "/$slug"
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
         val document = response.asJsoup()
-        val body = document.select("div.section__body").first()
         val manga = SManga.create()
-        manga.title = body.select(".manga__title").text()
+
+        if (document.html().contains("Манга удалена по просьбе правообладателей")) {
+            manga.status = SManga.LICENSED
+            return manga
+        }
+
+        val body = document.select("div.section__body").first()
+        val rawCategory = body.select(".info-list__row:has(strong:contains(Тип)) > span").text()
+        val category = when {
+            rawCategory == "Комикс западный" -> "комикс"
+            rawCategory.isNotBlank() -> rawCategory.toLowerCase()
+            else -> "манга"
+        }
+
+        val genres = body.select(".info-list__row:has(strong:contains(Жанры)) > a").map { it.text() }
+        manga.title = document.select(".manga-title small").text().substringBefore("/").trim()
         manga.thumbnail_url = body.select(".manga__cover").attr("src")
         manga.author = body.select(".info-list__row:nth-child(2) > a").text()
         manga.artist = body.select(".info-list__row:nth-child(3) > a").text()
@@ -160,13 +199,12 @@ class LibManga : ConfigurableSource, HttpSource() {
             body.select(".info-list__row:has(strong:contains(Перевод))")
                 .first()
                 .select("span.m-label")
-                .text())
-        {
+                .text()) {
             "продолжается" -> SManga.ONGOING
             "завершен" -> SManga.COMPLETED
             else -> SManga.UNKNOWN
         }
-        manga.genre = body.select(".info-list__row:has(strong:contains(Жанры)) > a").joinToString { it.text() }
+        manga.genre = genres.plusElement(category).joinToString { it.trim() }
         manga.description = body.select(".info-desc__content").text()
         return manga
     }
@@ -180,12 +218,27 @@ class LibManga : ConfigurableSource, HttpSource() {
     }
 
     private fun chapterFromElement(element: Element): SChapter {
-        val chapterLink = element.select("div.chapter-item__name > a").first()
+
         val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(chapterLink.attr("href"))
-        chapter.name = chapterLink.text()
+
+        val chapterLink = element.select("div.chapter-item__name > a").first()
+        if (chapterLink != null) {
+            chapter.setUrlWithoutDomain(chapterLink.attr("href"))
+        } else {
+            // Found multiple translate. Get first one for now
+            val volume = element.attr("data-volume")
+            val number = element.attr("data-number")
+            val teams = jsonParser.parse(element.attr("data-teams"))
+            val team = teams[0]["slug"].nullString
+            val baseUrl = "${element.baseUri()}/v$volume/c$number"
+            val url = if (team != null) "$baseUrl/$team" else baseUrl
+
+            chapter.setUrlWithoutDomain(url)
+        }
+
+        chapter.name = element.select("div.chapter-item__name").first().text()
         chapter.date_upload = SimpleDateFormat("dd.MM.yyyy", Locale.US)
-                .parse(element.select("div.chapter-item__date").text()).time
+            .parse(element.select("div.chapter-item__date").text()).time
         return chapter
     }
 
@@ -202,25 +255,33 @@ class LibManga : ConfigurableSource, HttpSource() {
             .select("script:containsData(window.__info)")
             .first()
             .html()
-            .replace("window.__info = ", "")
-            .replace(";", "")
+            .trim()
+            .removePrefix("window.__info = ")
+            .split(";")
+            .first()
 
         val chapInfoJson = jsonParser.parse(chapInfo).obj
+        val servers = chapInfoJson["servers"].asJsonObject
+        val defaultServer: String = chapInfoJson["img"]["server"].string
+        val imgUrl: String = chapInfoJson["img"]["url"].string
+
+        val serverToUse = if (this.server == null) defaultServer else this.server
+        val imageServerUrl: String = servers[serverToUse].string
 
         // Get pages
-        val baseStr = document.select("span.pp")
+        val pagesArr = document
+            .select("script:containsData(window.__pg)")
             .first()
             .html()
-            .replace("<!--", "")
-            .replace("-->", "")
             .trim()
+            .removePrefix("window.__pg = ")
+            .removeSuffix(";")
 
-        val decodedArr = base64Decode(baseStr, android.util.Base64.DEFAULT)
-        val pagesJson = jsonParser.parse(String(decodedArr)).array
+        val pagesJson = jsonParser.parse(pagesArr).array
 
         val pages = mutableListOf<Page>()
         pagesJson.forEach { page ->
-            pages.add(Page(page["p"].int, "", imageServerUrl + chapInfoJson["imgUrl"].string + page["u"].string))
+            pages.add(Page(page["p"].int, "", imageServerUrl + imgUrl + page["u"].string))
         }
 
         return pages
@@ -271,14 +332,14 @@ class LibManga : ConfigurableSource, HttpSource() {
 
         if (!searchRequest.isNullOrEmpty()) {
             val popupSearchHeaders = headers
-                    .newBuilder()
-                    .add("Accept", "application/json, text/plain, */*")
-                    .add("X-Requested-With", "XMLHttpRequest")
-                    .build()
+                .newBuilder()
+                .add("Accept", "application/json, text/plain, */*")
+                .add("X-Requested-With", "XMLHttpRequest")
+                .build()
 
             // +200ms
             val popup = client.newCall(
-                    GET("$baseUrl/search?query=$searchRequest", popupSearchHeaders))
+                GET("$baseUrl/search?query=$searchRequest", popupSearchHeaders))
                 .execute().body()!!.string()
 
             val jsonList = jsonParser.parse(popup).array
@@ -359,6 +420,7 @@ class LibManga : ConfigurableSource, HttpSource() {
         SearchFilter("драма", "43"),
         SearchFilter("ёнкома", "75"),
         SearchFilter("игра", "44"),
+        SearchFilter("исекай", "79"),
         SearchFilter("история", "45"),
         SearchFilter("киберпанк", "46"),
         SearchFilter("кодомо", "76"),
@@ -395,6 +457,6 @@ class LibManga : ConfigurableSource, HttpSource() {
 
     companion object {
         private const val SERVER_PREF_Title = "Сервер изображений"
-        private const val SERVER_PREF = "imageServer"
+        private const val SERVER_PREF = "MangaLibImageServer"
     }
 }

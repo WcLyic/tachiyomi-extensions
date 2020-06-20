@@ -23,9 +23,9 @@ class MyMangaReaderCMSSources : SourceFactory {
      *     {
      *         "language": "en",
      *         "name": "Example manga reader",
-     *         "base_url": "http://example.com",
+     *         "base_url": "https://example.com",
      *         "supports_latest": true,
-     *         "item_url": "http://example.com/manga/",
+     *         "item_url": "https://example.com/manga/",
      *         "categories": [
      *             {"id": "stuff", "name": "Stuff"},
      *             {"id": "test", "name": "Test"}
@@ -55,7 +55,7 @@ class MyMangaReaderCMSSources : SourceFactory {
             val categories = mapToPairs(jsonObject["categories"].array)
             var tags = emptyList<Pair<String, String>>()
             if (jsonObject["tags"].isJsonArray) {
-                tags = jsonObject["tags"].asJsonArray.let { mapToPairs(it) }
+                tags = mapToPairs(jsonObject["tags"].asJsonArray)
             }
 
             MyMangaReaderCMSSource(
@@ -86,5 +86,3 @@ class MyMangaReaderCMSSources : SourceFactory {
         it["id"].string to it["name"].string
     }
 }
-
-

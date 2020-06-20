@@ -8,6 +8,9 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.SimpleDateFormat
+import java.util.ArrayList
+import java.util.Locale
 import okhttp3.Request
 import okhttp3.Response
 import org.json.JSONArray
@@ -16,12 +19,10 @@ import org.jsoup.nodes.Element
 import org.jsoup.nodes.Node
 import org.jsoup.nodes.TextNode
 import org.jsoup.select.Elements
-import java.text.SimpleDateFormat
-import java.util.*
 
 abstract class DynastyScans : ParsedHttpSource() {
 
-    override val baseUrl = "http://dynasty-scans.com"
+    override val baseUrl = "https://dynasty-scans.com"
 
     abstract fun popularMangaInitialUrl(): String
 
@@ -29,13 +30,13 @@ abstract class DynastyScans : ParsedHttpSource() {
 
     override val supportsLatest = false
 
-    var parent: List<Node> = ArrayList()
+    private var parent: List<Node> = ArrayList()
 
-    var list = InternalList(ArrayList(), "")
+    private var list = InternalList(ArrayList(), "")
 
-    var imgList = InternalList(ArrayList(), "")
+    private var imgList = InternalList(ArrayList(), "")
 
-    var _valid: Validate = Validate(false, -1)
+    private var _valid: Validate = Validate(false, -1)
 
     override fun popularMangaRequest(page: Int): Request {
         return GET(popularMangaInitialUrl(), headers)
@@ -70,12 +71,8 @@ abstract class DynastyScans : ParsedHttpSource() {
 
     private fun buildListfromResponse(): List<Node> {
         return client.newCall(Request.Builder().headers(headers)
-                .url(popularMangaInitialUrl()).build()).execute().asJsoup()
-                .select("div#main").filter { it.hasText() }.first().childNodes()
-    }
-
-    protected fun parseThumbnail(manga: SManga) {
-        if (_valid.isManga) manga.thumbnail_url = baseUrl + imgList[_valid.pos].substringBefore('?')
+            .url(popularMangaInitialUrl()).build()).execute().asJsoup()
+            .select("div#main").first { it.hasText() }.childNodes()
     }
 
     protected fun parseHeader(document: Document, manga: SManga): Boolean {
@@ -113,7 +110,6 @@ abstract class DynastyScans : ParsedHttpSource() {
             manga.genre = genres.joinToString(", ")
         }
     }
-
 
     protected fun parseDescription(document: Document, manga: SManga) {
         manga.description = document.select("div.tags > div.row div.description").text()
@@ -161,9 +157,9 @@ abstract class DynastyScans : ParsedHttpSource() {
         val pages = mutableListOf<Page>()
         try {
             val imageUrl = document.select("script").last().html().substringAfter("var pages = [").substringBefore("];")
-            var imageUrls = JSONArray("[$imageUrl]")
+            val imageUrls = JSONArray("[$imageUrl]")
 
-            (0..imageUrls.length() - 1)
+            (0 until imageUrls.length())
                     .map { imageUrls.getJSONObject(it) }
                     .map { baseUrl + it.get("image") }
                     .forEach { pages.add(Page(pages.size, "", it)) }
@@ -173,9 +169,9 @@ abstract class DynastyScans : ParsedHttpSource() {
         return pages
     }
 
-    class InternalList : ArrayList<String> {
+    class InternalList(nodes: List<Node>, type: String) : ArrayList<String>() {
 
-        constructor(nodes: List<Node>, type: String) {
+        init {
             if (type == "text") {
                 for (node in nodes) {
                     if (node is TextNode) {
@@ -232,5 +228,4 @@ abstract class DynastyScans : ParsedHttpSource() {
     override fun latestUpdatesRequest(page: Int): Request {
         return popularMangaRequest(page)
     }
-
 }

@@ -1,9 +1,14 @@
 package eu.kanade.tachiyomi.extension.ar.mangaae
 
-import android.util.Log
+import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -14,32 +19,43 @@ class MangaAe : ParsedHttpSource() {
 
     override val name = "مانجا العرب"
 
-    override val baseUrl = "https://www.mangaae.com"
+    override val baseUrl = "https://mngaar.com"
 
     override val lang = "ar"
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.cloudflareClient
+    private val rateLimitInterceptor = RateLimitInterceptor(2)
+
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+        .addNetworkInterceptor(rateLimitInterceptor)
+        .build()
+
+    override fun headersBuilder(): Headers.Builder = Headers.Builder()
+        .add("User-Agent", "Mozilla/5.0 (Windows NT 6.1; WOW64; rv:54.0) Gecko/20100101 Firefox/75.0")
+        .add("Referer", baseUrl)
 
     // Popular
     override fun popularMangaRequest(page: Int): Request {
-        return GET("$baseUrl/manga", headers)
+        return GET("$baseUrl/manga/page:$page", headers)
     }
+
+    override fun popularMangaNextPageSelector() = "div.pagination a:last-child:not(.active)"
 
     override fun popularMangaSelector() = "div.mangacontainer"
 
-    override fun popularMangaFromElement(element: Element): SManga {
-        val manga = SManga.create()
-        manga.thumbnail_url = element.select("img").first().attr("src")
-        element.select("a.manga")[1].let {
-            manga.setUrlWithoutDomain(it.attr("href"))
-            manga.title = it.text()
+    override fun popularMangaFromElement(element: Element): SManga = SManga.create().apply {
+        val lazysrc = element.select("img").attr("data-pagespeed-lazy-src")
+        thumbnail_url = if (lazysrc.isNullOrEmpty()) {
+            element.select("img").attr("src")
+        } else {
+            lazysrc
         }
-        return manga
+        element.select("div.mangacontainer a.manga")[0].let {
+            title = it.text()
+            setUrlWithoutDomain(it.attr("abs:href"))
+        }
     }
-
-    override fun popularMangaNextPageSelector() = "div.pagination a.active"
 
     // Latest
     override fun latestUpdatesRequest(page: Int): Request {
@@ -48,16 +64,15 @@ class MangaAe : ParsedHttpSource() {
 
     override fun latestUpdatesSelector(): String = "div.popular-manga-container"
 
-    override fun latestUpdatesFromElement(element: Element): SManga {
-        val manga = SManga.create()
-        val img = element.select("img").first()
-        element.select("a").first().let {
-            manga.setUrlWithoutDomain(it.attr("href"))
-            manga.title = img.attr("alt")
-                .split("مانجا ")[1].split(" ch")[0]
+    override fun latestUpdatesFromElement(element: Element): SManga = SManga.create().apply {
+        val lazysrc = element.select("img").attr("data-pagespeed-lazy-src")
+        thumbnail_url = if (lazysrc.isNullOrEmpty()) {
+            element.select("img").attr("src")
+        } else {
+            lazysrc
         }
-        manga.thumbnail_url = img.attr("src")
-            return manga
+        setUrlWithoutDomain(element.select("a:has(img)").attr("href"))
+        title = element.select("a").last().text()
     }
 
     override fun latestUpdatesNextPageSelector(): String? = null
@@ -68,7 +83,7 @@ class MangaAe : ParsedHttpSource() {
         filters.forEach { filter ->
             when (filter) {
                 is OrderByFilter -> {
-                    if(filter.state != 0) {
+                    if (filter.state != 0) {
                         url += "|order:${filter.toUriPart()}"
                     }
                 }
@@ -85,18 +100,15 @@ class MangaAe : ParsedHttpSource() {
     override fun searchMangaNextPageSelector() = popularMangaNextPageSelector()
 
     // Manga summary page
-    override fun mangaDetailsParse(document: Document): SManga {
+    override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
         val infoElement = document.select("div.indexcontainer").first()
-        val manga = SManga.create()
-        manga.title = infoElement.select("div.main").first().ownText()
-        manga.author = infoElement.select("div.manga-details-author a")[1].ownText()
-        val status = infoElement.select("div.manga-details-extended h4")[1].ownText()
-        manga.status = parseStatus(status)
-        manga.genre = infoElement.select("ul > li").mapNotNull{ it.text() }.joinToString(", ")
-        manga.description = infoElement.select("div.manga-details-extended h4")[2].ownText()
-        manga.thumbnail_url = infoElement.select("img.manga-cover").attr("src")
-
-        return manga
+        title = infoElement.select("h1.EnglishName").text().removeSurrounding("(", ")")
+        author = infoElement.select("div.manga-details-author h4")[0].text()
+        artist = author
+        status = parseStatus(infoElement.select("div.manga-details-extended h4")[1].text())
+        genre = infoElement.select("div.manga-details-extended a[href*=tag]").joinToString(", ") { it.text() }
+        description = infoElement.select("div.manga-details-extended h4")[2].text()
+        thumbnail_url = infoElement.select("img.manga-cover").attr("src")
     }
 
     private fun parseStatus(status: String?) = when {
@@ -113,12 +125,9 @@ class MangaAe : ParsedHttpSource() {
         val chapter = SChapter.create()
         element.select("a").let {
             // use full pages for easier links
-            chapter.setUrlWithoutDomain(it.attr("href")
-                .replace("/1/", "/0/full"))
-            chapter.name = it.text()
+            chapter.setUrlWithoutDomain(it.attr("href").removeSuffix("/1/") + "/0/full")
+            chapter.name = "\u061C" + it.text() // Add unicode ARABIC LETTER MARK to ensure all titles are right to left
         }
-        chapter.date_upload = 0
-
         return chapter
     }
 
@@ -130,7 +139,8 @@ class MangaAe : ParsedHttpSource() {
         }
         return pages
     }
-    override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
+
+    override fun imageUrlParse(document: Document): String = throw Exception("Not used")
 
     private open class UriPartFilter(displayName: String, val vals: Array<Pair<String, String>>) :
         Filter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
@@ -148,5 +158,4 @@ class MangaAe : ParsedHttpSource() {
     override fun getFilterList() = FilterList(
         OrderByFilter()
     )
-
 }

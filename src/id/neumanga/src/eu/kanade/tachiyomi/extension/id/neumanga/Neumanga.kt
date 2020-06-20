@@ -1,17 +1,21 @@
 package eu.kanade.tachiyomi.extension.id.neumanga
 
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.source.model.*
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.X509TrustManager
 import okhttp3.HttpUrl
 import okhttp3.Request
 import org.json.JSONArray
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.security.SecureRandom
-import java.security.cert.X509Certificate
-import javax.net.ssl.SSLContext
-import javax.net.ssl.X509TrustManager
 
 class Neumanga : ParsedHttpSource() {
 
@@ -95,7 +99,7 @@ class Neumanga : ParsedHttpSource() {
                     filter.state.forEach {
                         if (it.state == 1) {
                             genreInclude.add(it.id)
-                        } else if (it.state == 2){
+                        } else if (it.state == 2) {
                             genreExclude.add(it.id)
                         }
                     }
@@ -123,7 +127,7 @@ class Neumanga : ParsedHttpSource() {
         val manga = SManga.create()
         manga.author = mangaInformationWrapper.select("span a[href*=author_search_mode]").first().text()
         manga.artist = mangaInformationWrapper.select("span a[href*=artist_search_mode]").first().text()
-        manga.genre = mangaInformationWrapper.select("a[href*=genre]").map { it.text() }.joinToString()
+        manga.genre = mangaInformationWrapper.select("a[href*=genre]").joinToString { it.text() }
         manga.thumbnail_url = mangaInformationWrapper.select("img.imagemg").first().attr("src")
         manga.description = document.select(".summary").first().textNodes()[1].toString()
         manga.status = parseStatus(mangaInformationWrapper.select("span a[href*=manga_status]").first().text())
@@ -244,5 +248,4 @@ class Neumanga : ParsedHttpSource() {
         Genre("Echi", "Echi"),
         Genre("4-Koma", "4-Koma")
     )
-
 }

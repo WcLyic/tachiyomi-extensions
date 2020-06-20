@@ -4,13 +4,21 @@ import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 
 class MangasProjectFactory : SourceFactory {
-    override fun createSources(): List<Source> = getAllSources()
+    override fun createSources(): List<Source> = listOf(
+        LeitorNet(),
+        MangaLivre()
+    )
 }
 
-class MangasProjectOriginal : MangasProject("mangásPROJECT", "https://leitor.net")
-class MangaLivre : MangasProject("MangaLivre", "https://mangalivre.com")
+class LeitorNet : MangasProject("Leitor.net", "https://leitor.net") {
+    // Use the old generated id when the source did have the name "mangásPROJECT" and
+    // did have mangas in their catalogue. Now they "only have webtoons" and
+    // became a different website, but they still use the same structure.
+    // Existing mangas and other titles in the library still work.
+    override val id: Long = 2225174659569980836
+}
 
-fun getAllSources(): List<Source> = listOf(
-    MangasProjectOriginal(),
-    MangaLivre()
-)
+class MangaLivre : MangasProject("MangaLivre", "https://mangalivre.net") {
+    // Hardcode the id because the language wasn't specific.
+    override val id: Long = 4762777556012432014
+}

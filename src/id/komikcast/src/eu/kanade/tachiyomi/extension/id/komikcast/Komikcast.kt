@@ -1,12 +1,19 @@
 package eu.kanade.tachiyomi.extension.id.komikcast
 
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.model.Filter
+import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.Page
+import eu.kanade.tachiyomi.source.model.SChapter
+import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import okhttp3.*
+import java.util.Calendar
+import okhttp3.Headers
+import okhttp3.HttpUrl
+import okhttp3.OkHttpClient
+import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import eu.kanade.tachiyomi.source.model.*
-import java.util.*
 
 class Komikcast : ParsedHttpSource() {
 
@@ -37,7 +44,7 @@ class Komikcast : ParsedHttpSource() {
             url.toString()
         } else {
             val url = HttpUrl.parse("$baseUrl/daftar-komik/page/$page")!!.newBuilder()
-            var orderBy = ""
+            var orderBy: String
             (if (filters.isEmpty()) getFilterList() else filters).forEach { filter ->
                 when (filter) {
                     is Status -> url.addQueryParameter("status", arrayOf("", "ongoing", "completed")[filter.state])
@@ -187,7 +194,7 @@ class Komikcast : ParsedHttpSource() {
         document.select("div#readerarea img").forEach { element ->
             val url = element.attr("src")
             i++
-            if (url.length > 0) {
+            if (url.isNotEmpty()) {
                 pages.add(Page(i, "", url))
             }
         }
@@ -197,7 +204,7 @@ class Komikcast : ParsedHttpSource() {
     override fun imageUrlParse(document: Document) = ""
 
     override fun imageRequest(page: Page): Request {
-        var headers = Headers.Builder()
+        val headers = Headers.Builder()
         headers.apply {
             add("Referer", baseUrl)
             add("User-Agent", "Mozilla/5.0 (Linux; U; Android 4.4.2; en-us; LGMS323 Build/KOT49I.MS32310c) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/76.0.3809.100 Mobile Safari/537.36")

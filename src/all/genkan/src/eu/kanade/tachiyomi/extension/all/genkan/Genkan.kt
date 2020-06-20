@@ -8,15 +8,15 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
 
 abstract class Genkan(
     override val name: String,
@@ -97,31 +97,29 @@ abstract class Genkan(
     }
 
     override fun mangaDetailsParse(document: Document): SManga {
-        val infoElement = document.select("div#content").first()
-
-        val manga = SManga.create()
-        manga.title = infoElement.select("h5").first().text()
-
-        manga.description = document.select("div.col-lg-9").text().substringAfter("Description ").substringBefore(" Volume")
-        manga.thumbnail_url = styleToUrl(document.select("div.media a").first())
-        return manga
+        return SManga.create().apply {
+            title = document.select("div#content h5").first().text()
+            description = document.select("div.col-lg-9").text().substringAfter("Description ").substringBefore(" Volume")
+            thumbnail_url = styleToUrl(document.select("div.media a").first())
+        }
     }
 
     override fun chapterListSelector() = "div.col-lg-9 div.flex"
 
     override fun chapterFromElement(element: Element): SChapter {
-        val urlElement = element.select("a.item-author")
+        return SChapter.create().apply {
 
-        val chapNum = urlElement.attr("href").split("/").last()
-        val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(urlElement.attr("href"))
-        if (urlElement.text().contains("Chapter $chapNum")) {
-            chapter.name = urlElement.text()
-        } else {
-            chapter.name = "Ch. " + chapNum + ": " + urlElement.text()
+            val urlElement = element.select("a.item-author")
+            val chapNum = urlElement.attr("href").split("/").last()
+
+            setUrlWithoutDomain(urlElement.attr("href"))
+            name = if (urlElement.text().contains("Chapter $chapNum")) {
+                urlElement.text()
+            } else {
+                "Ch. $chapNum: ${urlElement.text()}"
+            }
+            date_upload = parseChapterDate(element.select("a.item-company").first().text()) ?: 0
         }
-        chapter.date_upload = parseChapterDate(element.select("a.item-company").first().text()) ?: 0
-        return chapter
     }
 
     companion object {
@@ -171,7 +169,7 @@ abstract class Genkan(
         return pages
     }
 
-    override fun imageUrlParse(document: Document): String = throw  UnsupportedOperationException("Not used")
+    override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
 
     override fun imageRequest(page: Page): Request {
         return if (page.imageUrl!!.startsWith("http")) GET(page.imageUrl!!, headers) else GET(baseUrl + page.imageUrl!!, headers)
@@ -194,7 +192,7 @@ abstract class GenkanOriginal(
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         if (page == 1) searchPage = 1
-        searchQuery = query.toLowerCase()
+        searchQuery = query
         return popularMangaRequest(page)
     }
 
@@ -205,7 +203,7 @@ abstract class GenkanOriginal(
 
         /* call another function if there's more pages to search
            not doing it this way can lead to a false "no results found"
-           if no matches are found on the first page but there are matcheszz
+           if no matches are found on the first page but there are matches
            on subsequent pages */
         nextPageSelectorElement = document.select(searchMangaNextPageSelector())
         while (nextPageSelectorElement.hasText()) {
@@ -219,7 +217,7 @@ abstract class GenkanOriginal(
     private fun getMatchesFrom(document: Document): MutableList<SManga> {
         val searchMatches = mutableListOf<SManga>()
         document.select(searchMangaSelector())
-            .filter { it.text().toLowerCase().contains(searchQuery) }
+            .filter { it.text().contains(searchQuery, ignoreCase = true) }
             .map { searchMatches.add(searchMangaFromElement(it)) }
 
         return searchMatches
@@ -241,5 +239,4 @@ abstract class GenkanOriginal(
     override fun searchMangaFromElement(element: Element) = popularMangaFromElement(element)
 
     override fun searchMangaNextPageSelector() = popularMangaNextPageSelector()
-
 }

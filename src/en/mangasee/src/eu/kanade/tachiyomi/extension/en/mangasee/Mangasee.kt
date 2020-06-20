@@ -7,13 +7,15 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.regex.Pattern
 import okhttp3.FormBody
 import okhttp3.HttpUrl
 import okhttp3.Request
+import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import java.text.SimpleDateFormat
-import java.util.regex.Pattern
 
 class Mangasee : ParsedHttpSource() {
 
@@ -29,8 +31,6 @@ class Mangasee : ParsedHttpSource() {
 
     private val recentUpdatesPattern = Pattern.compile("(.*?)\\s(\\d+\\.?\\d*)\\s?(Completed)?")
 
-    private val indexPattern = Pattern.compile("-index-(.*?)-")
-
     override fun popularMangaSelector() = "div.requested > div.row"
 
     override fun popularMangaRequest(page: Int): Request {
@@ -44,6 +44,7 @@ class Mangasee : ParsedHttpSource() {
             manga.setUrlWithoutDomain(it.attr("href"))
             manga.title = it.text()
         }
+        manga.thumbnail_url = element.select("img").attr("abs:src")
         return manga
     }
 
@@ -65,7 +66,7 @@ class Mangasee : ParsedHttpSource() {
                         url.addQueryParameter("sortOrder", "descending")
                 }
                 is SelectField -> if (filter.state != 0) url.addQueryParameter(filter.key, filter.values[filter.state])
-                is TextField -> if (!filter.state.isEmpty()) url.addQueryParameter(filter.key, filter.state)
+                is TextField -> if (filter.state.isNotEmpty()) url.addQueryParameter(filter.key, filter.state)
                 is GenreList -> filter.state.forEach { genre ->
                     when (genre.state) {
                         Filter.TriState.STATE_INCLUDE -> genres.add(genre.name)
@@ -81,8 +82,8 @@ class Mangasee : ParsedHttpSource() {
         return POST(requestUrl, headers, body.build())
     }
 
-    private fun convertQueryToPost(page: Int, url: String): Pair<FormBody.Builder, String> {
-        val url = HttpUrl.parse(url)!!
+    private fun convertQueryToPost(page: Int, urlString: String): Pair<FormBody.Builder, String> {
+        val url = HttpUrl.parse(urlString)!!
         val body = FormBody.Builder().add("page", page.toString())
         for (i in 0 until url.querySize()) {
             body.add(url.queryParameterName(i), url.queryParameterValue(i))
@@ -97,6 +98,7 @@ class Mangasee : ParsedHttpSource() {
             manga.setUrlWithoutDomain(it.attr("href"))
             manga.title = it.text()
         }
+        manga.thumbnail_url = element.select("img").attr("abs:src")
         return manga
     }
 
@@ -107,7 +109,7 @@ class Mangasee : ParsedHttpSource() {
 
         val manga = SManga.create()
         manga.author = detailElement.select("a[href^=/search/?author=]").first()?.text()
-        manga.genre = detailElement.select("span.details > div.row > div:has(b:contains(Genre(s))) > a").map { it.text() }.joinToString()
+        manga.genre = detailElement.select("span.details > div.row > div:has(b:contains(Genre(s))) > a").joinToString { it.text() }
         manga.description = detailElement.select("strong:contains(Description:) + div").first()?.text()
         manga.status = detailElement.select("a[href^=/search/?status=]").first()?.text().orEmpty().let { parseStatus(it) }
         manga.thumbnail_url = detailElement.select("div > img").first()?.absUrl("src")
@@ -127,39 +129,28 @@ class Mangasee : ParsedHttpSource() {
 
         val chapter = SChapter.create()
         chapter.setUrlWithoutDomain(urlElement.attr("href"))
-        chapter.name = element.select("span.chapterLabel").first().text()?.let { it } ?: ""
+        chapter.name = element.select("span.chapterLabel").firstOrNull()?.text() ?: ""
         chapter.date_upload = element.select("time").first()?.attr("datetime")?.let { parseChapterDate(it) } ?: 0
         return chapter
     }
 
     private fun parseChapterDate(dateAsString: String): Long {
-        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ").parse(dateAsString).time
+        return SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ssZ", Locale.US).parse(dateAsString).time
     }
 
     override fun pageListParse(document: Document): List<Page> {
-        val fullUrl = document.baseUri()
-        val url = fullUrl.substringBeforeLast('/')
-
-        val pages = mutableListOf<Page>()
-
-        val series = document.select("input.IndexName").first().attr("value")
-        val chapter = document.select("span.CurChapter").first().text()
-        var index = ""
-
-        val m = indexPattern.matcher(fullUrl)
-        if (m.find()) {
-            val indexNumber = m.group(1)
-            index = "-index-$indexNumber"
+        val pageArr = document.select("script:containsData(PageArr={)").first().data()
+            .substringAfter("PageArr=").substringBefore(";")
+        return JSONObject(pageArr).let { jsonObject ->
+            jsonObject.keys()
+                .asSequence()
+                .toList()
+                .filter { it.toIntOrNull() is Int }
+                .mapIndexed { i, key -> Page(i, "", jsonObject.getString(key)) }
         }
-
-        document.select("div.ContainerNav").first().select("select.PageSelect > option").forEach {
-            pages.add(Page(pages.size, "$url/$series-chapter-$chapter$index-page-${pages.size + 1}.html"))
-        }
-        pages.getOrNull(0)?.imageUrl = imageUrlParse(document)
-        return pages
     }
 
-    override fun imageUrlParse(document: Document): String = document.select("img.CurImage").attr("src")
+    override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
 
     override fun latestUpdatesNextPageSelector() = "button.requestMore"
 
@@ -184,10 +175,11 @@ class Mangasee : ParsedHttpSource() {
             manga.setUrlWithoutDomain("/manga$mangaUrl")
             manga.title = title
         }
+        manga.thumbnail_url = element.select("img").attr("abs:src")
         return manga
     }
 
-    private class Sort : Filter.Sort("Sort", arrayOf("Alphabetically", "Date updated", "Popularity"), Filter.Sort.Selection(2, false))
+    private class Sort : Filter.Sort("Sort", arrayOf("Alphabetically", "Date updated", "Popularity"), Selection(2, false))
     private class Genre(name: String) : Filter.TriState(name)
     private class TextField(name: String, val key: String) : Filter.Text(name)
     private class SelectField(name: String, val key: String, values: Array<String>, state: Int = 0) : Filter.Select<String>(name, values, state)
@@ -246,5 +238,4 @@ class Mangasee : ParsedHttpSource() {
             Genre("Yaoi"),
             Genre("Yuri")
     )
-
 }
