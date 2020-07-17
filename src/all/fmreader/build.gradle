@@ -2,10 +2,10 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 ext {
-    appName = 'Tachiyomi: FMReader (multiple aggregators)'
+    extName = 'FMReader (multiple aggregators)'
     pkgNameSuffix = 'all.fmreader'
     extClass = '.FMReaderFactory'
-    extVersionCode = 17
+    extVersionCode = 19
     libVersion = '1.2'
 }
 

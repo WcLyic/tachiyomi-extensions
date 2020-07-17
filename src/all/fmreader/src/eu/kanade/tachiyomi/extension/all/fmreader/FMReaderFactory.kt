@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.extension.all.fmreader
 
+import eu.kanade.tachiyomi.annotations.MultiSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
@@ -21,6 +22,7 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
 
+@MultiSource
 class FMReaderFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         LHTranslation(),
@@ -111,6 +113,19 @@ class Manhwa18 : FMReader("Manhwa18", "https://manhwa18.com", "en") {
 }
 
 class EighteenLHPlus : FMReader("18LHPlus", "https://18lhplus.com", "en") {
+    override val client: OkHttpClient = super.client.newBuilder()
+        .addInterceptor { chain ->
+            val originalRequest = chain.request()
+            chain.proceed(originalRequest).let { response ->
+                if (response.code() == 403 && originalRequest.url().host().contains("mkklcdn")) {
+                    response.close()
+                    chain.proceed(originalRequest.newBuilder().removeHeader("Referer").addHeader("Referer", "https://manganelo.com").build())
+                } else {
+                    response
+                }
+            }
+        }
+        .build()
     override fun popularMangaNextPageSelector() = "div.col-lg-8 div.btn-group:first-of-type"
     override fun getGenreList() = getAdultGenreList()
 }
@@ -317,4 +332,7 @@ class EpikManga : FMReader("Epik Manga", "https://www.epikmanga.com", "tr") {
 
 class ManhuaScan : FMReader("ManhuaScan", "https://manhuascan.com", "en")
 
-class ManhwaSmut : FMReader("ManhwaSmut", "https://manhwasmut.com", "en")
+class ManhwaSmut : FMReader("ManhwaSmut", "https://manhwasmut.com", "en") {
+    private val noReferer = headersBuilder().removeAll("Referer").build()
+    override fun imageRequest(page: Page): Request = GET(page.imageUrl!!, if (page.imageUrl!!.contains("toonily")) noReferer else headers)
+}

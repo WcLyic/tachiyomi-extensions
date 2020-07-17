@@ -1,13 +1,13 @@
 package eu.kanade.tachiyomi.extension.all.komga.dto
 
 data class LibraryDto(
-    val id: Long,
+    val id: String,
     val name: String
 )
 
 data class SeriesDto(
-    val id: Long,
-    val libraryId: Long,
+    val id: String,
+    val libraryId: String,
     val name: String,
     val created: String?,
     val lastModified: String?,
@@ -25,8 +25,8 @@ data class SeriesMetadataDto(
 )
 
 data class BookDto(
-    val id: Long,
-    val seriesId: Long,
+    val id: String,
+    val seriesId: String,
     val name: String,
     val number: Float,
     val created: String?,
@@ -74,4 +74,14 @@ data class BookMetadataDto(
 data class AuthorDto(
     val name: String,
     val role: String
+)
+
+data class CollectionDto(
+    val id: String,
+    val name: String,
+    val ordered: Boolean,
+    val seriesIds: List<Long>,
+    val createdDate: String,
+    val lastModifiedDate: String,
+    val filtered: Boolean
 )

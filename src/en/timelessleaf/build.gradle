@@ -2,10 +2,10 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 ext {
-    appName = 'Tachiyomi: TimelessLeaf'
+    extName = 'TimelessLeaf'
     pkgNameSuffix = 'en.timelessleaf'
     extClass = '.TimelessLeaf'
-    extVersionCode = 1
+    extVersionCode = 2
     libVersion = '1.2'
 }
 

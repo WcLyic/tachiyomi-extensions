@@ -2,7 +2,7 @@ apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
 ext {
-    appName = 'Tachiyomi: ManHuaGui'
+    extName = 'ManHuaGui'
     pkgNameSuffix = 'zh.manhuagui'
     extClass = '.Manhuagui'
     extVersionCode = 2
@@ -11,7 +11,6 @@ ext {
 
 dependencies {
     implementation project(':lib-ratelimit')
-    compileOnly project(':duktape-stub')
     compileOnly "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
     compileOnly "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines_version"
 }
