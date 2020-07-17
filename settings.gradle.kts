@@ -10,7 +10,7 @@ include(":lib-dataimage")
 project(":lib-dataimage").projectDir = File("lib/dataimage")
 
 // File(rootDir, "src").eachDir { dir ->
-    File dir = File(rootDir, "src/zh")
+    val dir = File(rootDir, "src/zh")
     dir.eachDir { subdir ->
         val name = ":${dir.name}-${subdir.name}"
         include(name)
