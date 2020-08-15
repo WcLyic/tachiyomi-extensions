@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.extension.all.wpcomics
 
-import eu.kanade.tachiyomi.annotations.MultiSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
@@ -17,7 +16,6 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 
-@MultiSource
 class WPComicsFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         ManhuaES(),
@@ -110,7 +108,7 @@ private class TruyenChon : WPComics("TruyenChon", "http://truyenchon.com", "vi",
 }
 
 private class ComicLatest : WPComics("ComicLatest", "https://comiclatest.com", "en", SimpleDateFormat("MM/dd/yyyy", Locale.US), null) {
-    //Hot only has one page
+    // Hot only has one page
     override val popularPath = "popular-comics"
 
     override fun popularMangaFromElement(element: Element) = SManga.create().apply {
@@ -136,7 +134,7 @@ private class ComicLatest : WPComics("ComicLatest", "https://comiclatest.com", "
 
     override fun searchMangaSelector() = "div.item div.box_img > a[title]"
 
-    //For whatever reason, errors with author search if this isn't overridden
+    // For whatever reason, errors with author search if this isn't overridden
     override fun searchMangaFromElement(element: Element): SManga {
         return SManga.create().apply {
             title = element.attr("title")
@@ -160,7 +158,7 @@ private class ComicLatest : WPComics("ComicLatest", "https://comiclatest.com", "
 
     override fun pageListRequest(chapter: SChapter) = GET("$baseUrl${chapter.url}/all", headers)
 
-    private class AuthorFilter: Filter.Text("Author")
+    private class AuthorFilter : Filter.Text("Author")
 
     override fun getFilterList() = FilterList(
         Filter.Header("NOTE: Cannot be used with search"),

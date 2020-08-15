@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.extension.all.wpmangastream
 
-import eu.kanade.tachiyomi.annotations.MultiSource
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.Source
@@ -22,7 +21,6 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
 
-@MultiSource
 class WPMangaStreamFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         Kiryuu(),
@@ -41,7 +39,8 @@ class WPMangaStreamFactory : SourceFactory {
         Matakomik(),
         KomikindoCo(),
         ReadKomik(),
-        MangaP()
+        MangaP(),
+        MangaProZ()
     )
 }
 
@@ -652,9 +651,18 @@ class Matakomik : WPMangaStream("Matakomik", "https://matakomik.com", "id") {
 
 class KomikindoCo : WPMangaStream("Komikindo.co", "https://komikindo.co", "id")
 
-class ReadKomik : WPMangaStream("Readkomik", "https://readkomik.com", "en")
+class ReadKomik : WPMangaStream("Readkomik", "https://readkomik.com", "en") {
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
+}
 
 class MangaP : WPMangaStream("MangaP", "https://mangap.me", "ar") {
     override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
+}
+
+class MangaProZ : WPMangaStream("Manga Pro Z", "https://mangaproz.com", "ar") {
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
+    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
+    override fun chapterFromElement(element: Element): SChapter = super.chapterFromElement(element).apply { name = name.removeSuffix(" free") }
 }

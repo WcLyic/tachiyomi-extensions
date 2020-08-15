@@ -6,10 +6,8 @@ import com.github.salomonbrys.kotson.string
 import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
-import eu.kanade.tachiyomi.annotations.MultiSource
 import eu.kanade.tachiyomi.source.SourceFactory
 
-@MultiSource
 class MyMangaReaderCMSSources : SourceFactory {
     /**
      * Create a new copy of the sources
@@ -59,8 +57,10 @@ class MyMangaReaderCMSSources : SourceFactory {
             if (jsonObject["tags"].isJsonArray) {
                 tags = mapToPairs(jsonObject["tags"].asJsonArray)
             }
+            val isNsfw = jsonObject["isNsfw"].bool
 
-            MyMangaReaderCMSSource(
+            if (isNsfw) {
+                MyMangaReaderCMSSourceNsfw(
                     language,
                     name,
                     baseUrl,
@@ -68,7 +68,18 @@ class MyMangaReaderCMSSources : SourceFactory {
                     itemUrl,
                     categories,
                     tags
-            )
+                )
+            } else {
+                MyMangaReaderCMSSource(
+                    language,
+                    name,
+                    baseUrl,
+                    supportsLatest,
+                    itemUrl,
+                    categories,
+                    tags
+                )
+            }
         }
     }
 

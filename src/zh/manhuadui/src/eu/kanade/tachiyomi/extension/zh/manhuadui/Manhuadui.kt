@@ -9,6 +9,9 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import javax.crypto.Cipher
+import javax.crypto.spec.IvParameterSpec
+import javax.crypto.spec.SecretKeySpec
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Request
@@ -17,23 +20,24 @@ import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.util.Date
 import java.text.SimpleDateFormat
-import javax.crypto.Cipher
-import javax.crypto.spec.IvParameterSpec
-import javax.crypto.spec.SecretKeySpec
 
 class Manhuadui : ParsedHttpSource() {
 
     override val name = "漫画堆"
     override val baseUrl = "https://www.manhuabei.com"
-    val baseUrl2 = "https://m.manhuabei.com"
     override val lang = "zh"
     override val supportsLatest = true
     private val imageServer = arrayOf("https://mhcdn.manhuazj.com", "https://res.333dm.com", "https://res02.333dm.com")
 
+    companion object {
+        private const val DECRYPTION_KEY = "1739ZAQ54321bbG1"
+        private const val DECRYPTION_IV = "ABCDEF1G344321bb"
+    }
+
     override fun popularMangaSelector() = "li.list-comic"
     override fun searchMangaSelector() = popularMangaSelector()
     override fun latestUpdatesSelector() = popularMangaSelector()
-    override fun chapterListSelector() = ".chapter-warp > ul > li"
+    override fun chapterListSelector() = "ul[id^=chapter-list] > li a"
 
     override fun searchMangaNextPageSelector() = "li.next"
     override fun popularMangaNextPageSelector() = searchMangaNextPageSelector()
@@ -58,10 +62,6 @@ class Manhuadui : ParsedHttpSource() {
             GET(url.toString(), headers)
         }
     }
-
-    override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl2 + manga.url, headers)
-    override fun chapterListRequest(manga: SManga) = mangaDetailsRequest(manga)
-    override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url, headers)
 
     override fun popularMangaFromElement(element: Element) = mangaFromElement(element)
     override fun latestUpdatesFromElement(element: Element) = mangaFromElement(element)
@@ -100,11 +100,9 @@ class Manhuadui : ParsedHttpSource() {
     }
 
     override fun chapterFromElement(element: Element): SChapter {
-        val urlElement = element.select("a")
-
         val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(urlElement.attr("href"))
-        chapter.name = urlElement.text().trim()
+        chapter.setUrlWithoutDomain(element.attr("href"))
+        chapter.name = element.select("span:first-child").text().trim()
         return chapter
     }
 
@@ -122,12 +120,12 @@ class Manhuadui : ParsedHttpSource() {
         return manga
     }
 
-    fun chapterFromElement(element: Element, updateDate: Long): SChapter {
-        val urlElement = element.select("a")
+    override fun chapterListRequest(manga: SManga) = GET(baseUrl.replace("www", "m") + manga.url)
 
+    fun chapterFromElement(element: Element, updateDate: Long): SChapter {
         val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(urlElement.attr("href"))
-        chapter.name = urlElement.text().trim()
+        chapter.setUrlWithoutDomain(element.attr("href"))
+        chapter.name = element.select("span:first-child").text().trim()
         chapter.date_upload = updateDate
         return chapter
     }
@@ -140,12 +138,9 @@ class Manhuadui : ParsedHttpSource() {
 
     // ref: https://jueyue.iteye.com/blog/1830792
     private fun decryptAES(value: String): String? {
-        val key = "1231M8H8B8123456"
-        val iv = "A1B2C3D4E5F6G789"
-
         return try {
-            val secretKey = SecretKeySpec(key.toByteArray(), "AES")
-            val ivParams = IvParameterSpec(iv.toByteArray())
+            val secretKey = SecretKeySpec(DECRYPTION_KEY.toByteArray(), "AES")
+            val ivParams = IvParameterSpec(DECRYPTION_IV.toByteArray())
             val cipher = Cipher.getInstance("AES/CBC/PKCS5Padding")
             cipher.init(Cipher.DECRYPT_MODE, secretKey, ivParams)
 

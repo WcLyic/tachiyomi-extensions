@@ -7,6 +7,7 @@ import com.github.salomonbrys.kotson.array
 import com.github.salomonbrys.kotson.get
 import com.github.salomonbrys.kotson.string
 import com.google.gson.JsonParser
+import eu.kanade.tachiyomi.annotations.Nsfw
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.model.Filter
@@ -28,11 +29,11 @@ import okhttp3.Response
 import org.jsoup.nodes.Element
 import rx.Observable
 
-class MyMangaReaderCMSSource(
-    override val lang: String,
-    override val name: String,
-    override val baseUrl: String,
-    override val supportsLatest: Boolean,
+open class MyMangaReaderCMSSource(
+    final override val lang: String,
+    final override val name: String,
+    final override val baseUrl: String,
+    final override val supportsLatest: Boolean,
     private val itemUrl: String,
     private val categoryMappings: List<Pair<String, String>>,
     private val tagMappings: List<Pair<String, String>>?
@@ -64,27 +65,22 @@ class MyMangaReaderCMSSource(
         }
     }
 
-    /**
-     * Search through a list of titles client-side or let the server do it
-     */
-    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        return if (name == "Mangas.pw") {
-            selfSearch(query)
-        } else {
-            super.fetchSearchManga(page, query, filters)
-        }
-    }
-
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        // Query overrides everything
         val url: Uri.Builder
-        if (query.isNotBlank()) {
-            url = Uri.parse("$baseUrl/search")!!.buildUpon()
-            url.appendQueryParameter("query", query)
-        } else {
-            url = Uri.parse("$baseUrl/filterList?page=$page")!!.buildUpon()
-            filters.filterIsInstance<UriFilter>()
+        when {
+            name == "Mangas.pw" -> {
+                url = Uri.parse("$baseUrl/search")!!.buildUpon()
+                url.appendQueryParameter("q", query)
+            }
+            query.isNotBlank() -> {
+                url = Uri.parse("$baseUrl/search")!!.buildUpon()
+                url.appendQueryParameter("query", query)
+            }
+            else -> {
+                url = Uri.parse("$baseUrl/filterList?page=$page")!!.buildUpon()
+                filters.filterIsInstance<UriFilter>()
                     .forEach { it.addToUri(url) }
+            }
         }
         return GET(url.toString(), headers)
     }
@@ -113,20 +109,22 @@ class MyMangaReaderCMSSource(
 
     override fun popularMangaParse(response: Response) = internalMangaParse(response)
     override fun searchMangaParse(response: Response): MangasPage {
-        return if (response.request().url().queryParameter("query")?.isNotBlank() == true) {
+        return if (listOf("query", "q").any { it in response.request().url().queryParameterNames() }) {
             // If a search query was specified, use search instead!
-            MangasPage(jsonParser
-                    .parse(response.body()!!.string())["suggestions"].array
-                    .map {
-                        SManga.create().apply {
-                            val segment = it["data"].string
-                            url = getUrlWithoutBaseUrl(itemUrl + segment)
-                            title = it["value"].string
+            val jsonArray = jsonParser.parse(response.body()!!.string()).let {
+                if (name == "Mangas.pw") it.array else it["suggestions"].array
+            }
+            MangasPage(jsonArray
+                .map {
+                    SManga.create().apply {
+                        val segment = it["data"].string
+                        url = getUrlWithoutBaseUrl(itemUrl + segment)
+                        title = it["value"].string
 
-                            // Guess thumbnails
-                            // thumbnail_url = "$baseUrl/uploads/manga/$segment/cover/cover_250x350.jpg"
-                        }
-                    }, false)
+                        // Guess thumbnails
+                        // thumbnail_url = "$baseUrl/uploads/manga/$segment/cover/cover_250x350.jpg"
+                    }
+                }, false)
         } else {
             internalMangaParse(response)
         }
@@ -139,7 +137,14 @@ class MyMangaReaderCMSSource(
 
         if (document.location().contains("page=1")) latestTitles.clear()
 
-        val mangas = document.select(latestUpdatesSelector()).map { element -> latestUpdatesFromElement(element) }
+        val mangas = document.select(latestUpdatesSelector())
+            .let { elements ->
+                if (elements.select("a").firstOrNull()?.hasText() == true) {
+                    elements.map { latestUpdatesFromElement(it) }
+                } else {
+                    document.select(gridLatestUpdatesSelector()).map { gridLatestUpdatesFromElement(it) }
+                }
+            }
             .distinctBy { manga -> manga.title }
             .filterNot { manga -> manga.title in latestTitles }
             .also { list -> latestTitles.addAll(list.map { it.title }) }
@@ -152,6 +157,15 @@ class MyMangaReaderCMSSource(
         url = element.select("a").first().attr("abs:href").substringAfter(baseUrl) // intentionally not using setUrlWithoutDomain
         title = element.select("a").first().text().trim()
         thumbnail_url = "$baseUrl/uploads/manga/${url.substringAfterLast('/')}/cover/cover_250x350.jpg"
+    }
+    // MangaYu and MangaID needs this
+    private fun gridLatestUpdatesSelector() = "div.mangalist div.manga-item, div.grid-manga tr"
+    private fun gridLatestUpdatesFromElement(element: Element): SManga = SManga.create().apply {
+        element.select("a.chart-title").let {
+            setUrlWithoutDomain(it.attr("href"))
+            title = it.text()
+        }
+        thumbnail_url = element.select("img").attr("abs:src")
     }
 
     private fun internalMangaParse(response: Response): MangasPage {
@@ -447,3 +461,22 @@ class MyMangaReaderCMSSource(
         private val DATE_FORMAT = SimpleDateFormat("d MMM. yyyy", Locale.US)
     }
 }
+
+@Nsfw
+class MyMangaReaderCMSSourceNsfw(
+    lang: String,
+    name: String,
+    baseUrl: String,
+    supportsLatest: Boolean,
+    itemUrl: String,
+    categoryMappings: List<Pair<String, String>>,
+    tagMappings: List<Pair<String, String>>?
+) : MyMangaReaderCMSSource(
+    lang,
+    name,
+    baseUrl,
+    supportsLatest,
+    itemUrl,
+    categoryMappings,
+    tagMappings
+)

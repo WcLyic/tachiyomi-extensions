@@ -65,19 +65,19 @@ open class MyReadingManga(override val lang: String, private val siteLang: Strin
 
     // Search
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        var fqIndex = 0
+        val filterList = if (filters.isEmpty()) getFilterList() else filters
+        // whether enforce language is true will change the index of the loop below
+        val indexModifier = filterList.filterIsInstance<EnforceLanguageFilter>().first().indexModifier()
+
         val uri = Uri.parse("$baseUrl/search/").buildUpon()
             .appendQueryParameter("wpsolr_q", query)
-        @Suppress("NullableBooleanElvis")
-        if ((filters.find { it is EnforceLanguageFilter } as? Filter.CheckBox)?.state ?: true)
-                uri.appendQueryParameter("wpsolr_fq[$fqIndex]", "lang_str:$siteLang")
-            .appendQueryParameter("wpsolr_page", page.toString())
-        filters.forEach {
-            if (it is UriFilter) {
-                fqIndex++
-                it.addToUri(uri, "wpsolr_fq[$fqIndex]")
+        filterList.forEachIndexed { i, filter ->
+            if (filter is UriFilter) {
+                filter.addToUri(uri, "wpsolr_fq[${i - indexModifier}]")
             }
         }
+        uri.appendQueryParameter("wpsolr_page", page.toString())
+
         return GET(uri.toString(), headers)
     }
 
@@ -121,7 +121,8 @@ open class MyReadingManga(override val lang: String, private val siteLang: Strin
     }
 
     // cleans up the name removing author and language from the title
-    private fun cleanTitle(title: String) = title.substringBeforeLast("[").substringAfterLast("]").substringBeforeLast("(").trim()
+    private val titleRegex = Regex("""\[[^]]*]""")
+    private fun cleanTitle(title: String) = title.replace(titleRegex, "").substringBeforeLast("(").trim()
 
     private fun cleanAuthor(author: String) = author.substringAfter("[").substringBefore("]").trim()
 
@@ -209,7 +210,9 @@ open class MyReadingManga(override val lang: String, private val siteLang: Strin
 
     override fun pageListParse(document: Document): List<Page> {
         return (document.select("div > img") + document.select("div.separator img[data-src]"))
-            .mapIndexed { i, img -> Page(i, "", getImage(img)) }
+            .map { getImage(it) }
+            .distinct()
+            .mapIndexed { i, url -> Page(i, "", url) }
     }
 
     override fun imageUrlParse(document: Document) = throw Exception("Not used")
@@ -253,7 +256,7 @@ open class MyReadingManga(override val lang: String, private val siteLang: Strin
     // Generates the filter lists for app
     override fun getFilterList(): FilterList {
         return FilterList(
-            EnforceLanguageFilter(),
+            EnforceLanguageFilter(siteLang),
             GenreFilter(returnFilter(getCache(cachedPagesUrls["genres"]!!), ".tagcloud a[href*=/genre/]")),
             TagFilter(returnFilter(getCache(cachedPagesUrls["tags"]!!), ".tagcloud a[href*=/tag/]")),
             CatFilter(returnFilter(getCache(cachedPagesUrls["categories"]!!), ".links a")),
@@ -262,7 +265,12 @@ open class MyReadingManga(override val lang: String, private val siteLang: Strin
         )
     }
 
-    private class EnforceLanguageFilter : Filter.CheckBox("Enforce language", true)
+    private class EnforceLanguageFilter(val siteLang: String) : Filter.CheckBox("Enforce language", true), UriFilter {
+        fun indexModifier() = if (state) 0 else 1
+        override fun addToUri(uri: Uri.Builder, uriParam: String) {
+            if (state) uri.appendQueryParameter(uriParam, "lang_str:$siteLang")
+        }
+    }
 
     private class GenreFilter(GENRES: Array<String>) : UriSelectFilter("Genre", "genre_str", arrayOf("Any", *GENRES))
     private class TagFilter(POPTAG: Array<String>) : UriSelectFilter("Popular Tags", "tags", arrayOf("Any", *POPTAG))

@@ -1,15 +1,12 @@
 package eu.kanade.tachiyomi.extension.all.genkan
 
-import eu.kanade.tachiyomi.annotations.MultiSource
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 
-@MultiSource
 class GenkanFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         LeviatanScans(),
         LeviatanScansES(),
-        OneShotScans(),
         HunlightScans(),
         ZeroScans(),
         ReaperScans(),
@@ -29,7 +26,6 @@ class GenkanFactory : SourceFactory {
 
 class LeviatanScans : Genkan("Leviatan Scans", "https://leviatanscans.com", "en")
 class LeviatanScansES : GenkanOriginal("Leviatan Scans", "https://es.leviatanscans.com", "es")
-class OneShotScans : Genkan("One Shot Scans", "https://oneshotscans.com", "en")
 class HunlightScans : Genkan("Hunlight Scans", "https://hunlight-scans.info", "en")
 class ZeroScans : Genkan("ZeroScans", "https://zeroscans.com", "en")
 // Search isn't working on Reaper's website, use GenkanOriginal for now
