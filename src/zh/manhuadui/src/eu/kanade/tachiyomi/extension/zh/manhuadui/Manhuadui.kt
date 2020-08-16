@@ -106,6 +106,8 @@ class Manhuadui : ParsedHttpSource() {
         return chapter
     }
 
+    override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl.replace("www", "m") + manga.url)
+
     override fun mangaDetailsParse(document: Document): SManga {
         val manga = SManga.create()
         manga.description = document.select("#simple-des").text().trim()
