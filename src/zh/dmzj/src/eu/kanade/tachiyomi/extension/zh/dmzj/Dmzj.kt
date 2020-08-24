@@ -172,24 +172,29 @@ class Dmzj : HttpSource() {
                 ret.add(SChapter.create().apply {
                     name = "$prefix: ${chapter.getString("chapter_title")}"
                     date_upload = chapter.getString("updatetime").toLong() * 1000 // milliseconds
-                    url = "/chapter/$cid/${chapter.getString("chapter_id")}.json"
+                    // url = "$baseUrl/chapter/$cid/${chapter.getString("chapter_id")}.json"
+                    url = "https://api.m.dmzj.com/comic/chapter/$cid/${chapter.getString("chapter_id")}.html"
                 })
             }
         }
         return ret
     }
 
+    override fun pageListRequest(chapter: SChapter) = GET(chapter.url, headers) // Bypass base url
+
     override fun pageListParse(response: Response): List<Page> {
-        var text = response.body()!!.string()
-        if (text.contains("章节不存在")) {
-            var url = response.request().url().toString()
-            val r = Regex("/chapter/(\\d+?)/(\\d+?)\\.json")
-            val m = r.find(url)
-            url = "http://m.dmzj.com/chapinfo/${m!!.groupValues.get(1)}/${m!!.groupValues.get(2)}.html" //From m_readerBg.js 
-            text = client.newCall(GET(url, headers)).execute().body()!!.string()
+        // some chapters are hidden and won't return a JSONObject from api.m.dmzj, have to get them through v3api (but images won't be as HQ)
+        val arr = try {
+            val obj = JSONObject(response.body()!!.string())
+            obj.getJSONObject("chapter").getJSONArray("page_url")
+        } catch (_: Exception) {
+            // example url: https://m.dmzj.com/chapinfo/44253/101852.html
+            val url = response.request().url().toString()
+                .replace("api.m", "m")
+                .replace("comic/chapter", "chapinfo")
+            val obj = client.newCall(GET(url, headers)).execute().let { JSONObject(it.body()!!.string()) }
+            obj.getJSONArray("page_url")
         }
-        val obj = JSONObject(text)
-        val arr = obj.getJSONArray("page_url")
         val ret = ArrayList<Page>(arr.length())
         for (i in 0 until arr.length()) {
             ret.add(Page(i, "", arr.getString(i)))
