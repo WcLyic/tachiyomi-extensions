@@ -172,15 +172,15 @@ class Dmzj : HttpSource() {
                 ret.add(SChapter.create().apply {
                     name = "$prefix: ${chapter.getString("chapter_title")}"
                     date_upload = chapter.getString("updatetime").toLong() * 1000 // milliseconds
-                    // url = "$baseUrl/chapter/$cid/${chapter.getString("chapter_id")}.json"
-                    url = "https://api.m.dmzj.com/comic/chapter/$cid/${chapter.getString("chapter_id")}.html"
+                    // url = "https://api.m.dmzj.com/comic/chapter/$cid/${chapter.getString("chapter_id")}.html"
+                    url = "/chapter/$cid/${chapter.getString("chapter_id")}.json"
                 })
             }
         }
         return ret
     }
 
-    override fun pageListRequest(chapter: SChapter) = GET(chapter.url, headers) // Bypass base url
+    override fun pageListRequest(chapter: SChapter) = GET("https://api.m.dmzj.com/comic" + chapter.url.replace(".json", ".html"), headers) // Backward compatibility
 
     override fun pageListParse(response: Response): List<Page> {
         // some chapters are hidden and won't return a JSONObject from api.m.dmzj, have to get them through v3api (but images won't be as HQ)
