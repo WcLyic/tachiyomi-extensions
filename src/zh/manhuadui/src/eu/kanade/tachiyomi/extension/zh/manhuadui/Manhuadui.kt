@@ -124,18 +124,22 @@ class Manhuadui : ParsedHttpSource() {
 
     override fun chapterListRequest(manga: SManga) = GET(baseUrl.replace("www", "m") + manga.url)
 
-    fun chapterFromElement(element: Element, updateDate: Long): SChapter {
-        val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(element.attr("href"))
-        chapter.name = element.select("span:first-child").text().trim()
-        chapter.date_upload = updateDate
-        return chapter
-    }
-
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
         val updateDate = SimpleDateFormat("yyyy-MM-dd HH:mm").parse(document.select(".Introduct_Sub > .sub_r .date").text().trim() + " GMT+08:00").time
-        return document.select(chapterListSelector()).map { chapterFromElement(it, updateDate) }.asReversed()
+        val ret = ArrayList<SChapter>()
+        document.select(".comic-chapters").forEach {
+            val chapters = ArrayList<SChapter>()
+            val prefix = it.select(".chapter-category .Title").text().trim().replace("列表","")
+            it.select(chapterListSelector()).forEach { el ->
+                val chapter = chapterFromElement(el)
+                chapter.date_upload = updateDate
+                chapter.name = "$prefix: ${chapter.name}"
+                chapters.add(chapter)
+            }
+            ret.addAll(chapters.asReversed())
+        }
+        return ret
     }
 
     // ref: https://jueyue.iteye.com/blog/1830792
