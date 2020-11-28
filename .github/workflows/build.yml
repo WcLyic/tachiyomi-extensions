@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - master
+      - my
   pull_request:
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       - name: Checkout master branch
         uses: actions/checkout@v2
         with:
-          ref: master
+          ref: my
           path: master
 
       - name: Set up JDK 1.8
