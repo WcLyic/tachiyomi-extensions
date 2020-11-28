@@ -7,10 +7,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import java.net.URLDecoder
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.concurrent.TimeUnit
 import okhttp3.Headers
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,6 +14,10 @@ import okhttp3.RequestBody
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import java.net.URLDecoder
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.concurrent.TimeUnit
 
 abstract class ToomicsGlobal(
     private val siteLang: String,
@@ -126,7 +126,7 @@ abstract class ToomicsGlobal(
         val numText = if (num.isNotEmpty()) "$num - " else ""
 
         name = numText + element.select("div.cell-title")?.first()?.ownText()
-        chapter_number = num.toFloatOrNull() ?: 0f
+        chapter_number = num.toFloatOrNull() ?: -1f
         date_upload = parseChapterDate(element.select("div.cell-time time").text()!!)
         scanlator = "Toomics"
         url = element.select("a").attr("onclick")
@@ -153,7 +153,7 @@ abstract class ToomicsGlobal(
 
     private fun parseChapterDate(date: String): Long {
         return try {
-            dateFormat.parse(date).time
+            dateFormat.parse(date)?.time ?: 0L
         } catch (e: ParseException) {
             0L
         }

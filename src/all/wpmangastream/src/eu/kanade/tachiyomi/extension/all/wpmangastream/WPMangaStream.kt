@@ -13,19 +13,20 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import java.text.SimpleDateFormat
-import java.util.Calendar
-import java.util.Locale
-import java.util.concurrent.TimeUnit
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 abstract class WPMangaStream(
     override val name: String,
@@ -95,11 +96,11 @@ abstract class WPMangaStream(
     protected fun Elements.imgAttr(): String = this.first().imgAttr()
 
     override fun popularMangaRequest(page: Int): Request {
-        return GET("$baseUrl/manga/page/$page/?order=popular", headers)
+        return GET("$baseUrl/manga/?page=$page&order=popular", headers)
     }
 
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/manga/page/$page/?order=latest", headers)
+        return GET("$baseUrl/manga/?page=$page&order=update", headers)
     }
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
@@ -162,12 +163,21 @@ abstract class WPMangaStream(
     override fun mangaDetailsParse(document: Document): SManga {
         return SManga.create().apply {
             document.select("div.bigcontent, div.animefull").firstOrNull()?.let { infoElement ->
-                genre = infoElement.select("span:contains(Genres:) a").joinToString { it.text() }
-                status = parseStatus(infoElement.select("span:contains(Status:)").firstOrNull()?.ownText())
-                author = infoElement.select("span:contains(Author:)").firstOrNull()?.ownText()
-                artist = author
-                description = infoElement.select("div.desc p").joinToString("\n") { it.text() }
+                genre = infoElement.select(".mgen a").joinToString { it.text() }
+                status = parseStatus(infoElement.select(".imptdt:contains(Status) i").firstOrNull()?.ownText())
+                author = infoElement.select(".fmed b:contains(Author)+span").firstOrNull()?.ownText()
+                artist = infoElement.select(".fmed b:contains(Artist)+span").firstOrNull()?.ownText()
+                description = infoElement.select("div.entry-content p").joinToString("\n") { it.text() }
                 thumbnail_url = infoElement.select("div.thumb img").imgAttr()
+
+                // Some wpmangastream sites still use old wpmangastream manga detail layout
+                if (author == artist && artist == null) {
+                    genre = infoElement.select("span:contains(Genres:) a").joinToString { it.text() }
+                    status = parseStatus(infoElement.select("span:contains(Status:)").firstOrNull()?.ownText())
+                    author = infoElement.select("span:contains(Author:)").firstOrNull()?.ownText()
+                    artist = author
+                    description = infoElement.select("div.desc p").joinToString("\n") { it.text() }
+                }
             }
         }
     }
@@ -179,14 +189,14 @@ abstract class WPMangaStream(
         else -> SManga.UNKNOWN
     }
 
-    override fun chapterListSelector() = "div.bxcl ul li, div.cl ul li"
+    override fun chapterListSelector() = "div.bxcl ul li, div.cl ul li, li:has(div.chbox):has(div.eph-num)"
 
     override fun chapterFromElement(element: Element): SChapter {
-        val urlElement = element.select(".lchx > a, span.leftoff a").first()
+        val urlElement = element.select(".lchx > a, span.leftoff a, div.eph-num > a").first()
         val chapter = SChapter.create()
         chapter.setUrlWithoutDomain(urlElement.attr("href"))
-        chapter.name = urlElement.text()
-        chapter.date_upload = element.select("span.rightoff, time").firstOrNull()?.text()?.let { parseChapterDate(it) } ?: 0
+        chapter.name = if (urlElement.select("span.chapternum").isNotEmpty()) urlElement.select("span.chapternum").text() else urlElement.text()
+        chapter.date_upload = element.select("span.rightoff, time, span.chapterdate").firstOrNull()?.text()?.let { parseChapterDate(it) } ?: 0
         return chapter
     }
 
@@ -236,10 +246,27 @@ abstract class WPMangaStream(
         }
     }
 
+    open val pageSelector = "div#readerarea img"
+
     override fun pageListParse(document: Document): List<Page> {
-        return document.select("div#readerarea img")
+        var pages = mutableListOf<Page>()
+        document.select(pageSelector)
             .filterNot { it.attr("src").isNullOrEmpty() }
-            .mapIndexed { i, img -> Page(i, "", img.attr("abs:src")) }
+            .mapIndexed { i, img -> pages.add(Page(i, "", img.attr("abs:src"))) }
+
+        // Some wpmangastream sites like AsuraScans now load pages via javascript
+        if (pages.isNotEmpty()) { return pages }
+
+        val docString = document.toString()
+        val imageListRegex = Regex("images.*?:.*?(\\[.*?\\])")
+
+        val imageList = JSONArray(imageListRegex.find(docString)!!.destructured.toList()[0])
+
+        for (i in 0 until imageList.length()) {
+            pages.add(Page(i, "", imageList.getString(i)))
+        }
+
+        return pages
     }
 
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
@@ -273,34 +300,44 @@ abstract class WPMangaStream(
 
     private class YearFilter : Filter.Text("Year")
 
-    protected class TypeFilter : UriPartFilter("Type", arrayOf(
-        Pair("Default", ""),
-        Pair("Manga", "Manga"),
-        Pair("Manhwa", "Manhwa"),
-        Pair("Manhua", "Manhua"),
-        Pair("Comic", "Comic")
-    ))
+    protected class TypeFilter : UriPartFilter(
+        "Type",
+        arrayOf(
+            Pair("Default", ""),
+            Pair("Manga", "Manga"),
+            Pair("Manhwa", "Manhwa"),
+            Pair("Manhua", "Manhua"),
+            Pair("Comic", "Comic")
+        )
+    )
 
-    protected class SortByFilter : UriPartFilter("Sort By", arrayOf(
-        Pair("Default", ""),
-        Pair("A-Z", "title"),
-        Pair("Z-A", "titlereverse"),
-        Pair("Latest Update", "update"),
-        Pair("Latest Added", "latest"),
-        Pair("Popular", "popular")
-    ))
+    protected class SortByFilter : UriPartFilter(
+        "Sort By",
+        arrayOf(
+            Pair("Default", ""),
+            Pair("A-Z", "title"),
+            Pair("Z-A", "titlereverse"),
+            Pair("Latest Update", "update"),
+            Pair("Latest Added", "latest"),
+            Pair("Popular", "popular")
+        )
+    )
 
-    protected class StatusFilter : UriPartFilter("Status", arrayOf(
-        Pair("All", ""),
-        Pair("Ongoing", "ongoing"),
-        Pair("Completed", "completed")
-    ))
+    protected class StatusFilter : UriPartFilter(
+        "Status",
+        arrayOf(
+            Pair("All", ""),
+            Pair("Ongoing", "ongoing"),
+            Pair("Completed", "completed")
+        )
+    )
 
     protected class Genre(name: String, val id: String = name) : Filter.TriState(name)
     protected class GenreListFilter(genres: List<Genre>) : Filter.Group<Genre>("Genre", genres)
 
     override fun getFilterList() = FilterList(
         Filter.Header("NOTE: Ignored if using text search!"),
+        Filter.Header("Genre exclusion not available for all sources"),
         Filter.Separator(),
         AuthorFilter(),
         YearFilter(),

@@ -19,9 +19,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.Locale
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.MediaType
@@ -30,6 +27,9 @@ import okhttp3.Request
 import okhttp3.RequestBody
 import okhttp3.Response
 import rx.Observable
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 @Nsfw
 class Hipercool : HttpSource() {
@@ -168,7 +168,7 @@ class Hipercool : HttpSource() {
 
     private fun chapterListItemParse(book: JsonObject, obj: JsonObject): SChapter = SChapter.create().apply {
         name = obj["title"].string
-        chapter_number = obj["title"].string.toFloatOrNull() ?: 0f
+        chapter_number = obj["title"].string.toFloatOrNull() ?: -1f
         // The property is written wrong.
         date_upload = DATE_FORMATTER.tryParseTime(obj["publishied_at"].string)
 
@@ -225,7 +225,7 @@ class Hipercool : HttpSource() {
 
     private fun SimpleDateFormat.tryParseTime(date: String): Long {
         return try {
-            parse(date.substringBefore("T")).time
+            parse(date.substringBefore("T"))?.time ?: 0L
         } catch (e: ParseException) {
             0L
         }

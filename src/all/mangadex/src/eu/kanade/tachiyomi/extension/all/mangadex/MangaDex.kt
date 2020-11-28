@@ -4,6 +4,7 @@ import android.app.Application
 import android.content.SharedPreferences
 import android.support.v7.preference.ListPreference
 import android.support.v7.preference.PreferenceScreen
+import android.util.Log
 import com.github.salomonbrys.kotson.forEach
 import com.github.salomonbrys.kotson.get
 import com.github.salomonbrys.kotson.int
@@ -12,11 +13,13 @@ import com.github.salomonbrys.kotson.long
 import com.github.salomonbrys.kotson.nullString
 import com.github.salomonbrys.kotson.obj
 import com.github.salomonbrys.kotson.string
+import com.google.gson.Gson
 import com.google.gson.JsonElement
 import com.google.gson.JsonObject
 import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservable
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
@@ -28,16 +31,13 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.net.URLEncoder
-import java.util.Date
-import java.util.concurrent.TimeUnit
-import kotlin.collections.set
 import okhttp3.CacheControl
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
@@ -45,6 +45,10 @@ import org.jsoup.parser.Parser
 import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.net.URLEncoder
+import java.util.Date
+import java.util.concurrent.TimeUnit
+import kotlin.collections.set
 
 abstract class MangaDex(
     override val lang: String,
@@ -72,6 +76,7 @@ abstract class MangaDex(
     override val client: OkHttpClient = network.client.newBuilder()
         .addNetworkInterceptor(rateLimitInterceptor)
         .addInterceptor(CoverInterceptor())
+        .addInterceptor(MdAtHomeReportInterceptor(network.client, headersBuilder().build()))
         .build()
 
     private fun clientBuilder(): OkHttpClient = clientBuilder(getShowR18())
@@ -421,7 +426,8 @@ abstract class MangaDex(
 
     // Remove bbcode tags as well as parses any html characters in description or chapter name to actual characters for example &hearts; will show ♥
     private fun cleanString(string: String): String {
-        val bbRegex = """\[(\w+)[^]]*](.*?)\[/\1]""".toRegex()
+        val bbRegex =
+            """\[(\w+)[^]]*](.*?)\[/\1]""".toRegex()
         var intermediate = string
             .replace("[list]", "")
             .replace("[/list]", "")
@@ -583,18 +589,14 @@ abstract class MangaDex(
         val jsonData = response.body()!!.string()
         val json = JsonParser().parse(jsonData).asJsonObject
 
-        val pages = mutableListOf<Page>()
-
         val hash = json.get("hash").string
-        val pageArray = json.getAsJsonArray("page_array")
         val server = json.get("server").string
 
-        pageArray.forEach {
+        return json.getAsJsonArray("page_array").mapIndexed { idx, it ->
             val url = "$hash/${it.asString}"
-            pages.add(Page(pages.size, "$server,${response.request().url()},${Date().time}", url))
+            val mdAtHomeMetadataUrl = "$server,${response.request().url()},${Date().time}"
+            Page(idx, mdAtHomeMetadataUrl, url)
         }
-
-        return pages
     }
 
     override fun imageRequest(page: Page): Request {
@@ -624,6 +626,7 @@ abstract class MangaDex(
                 tokenedServer + page.imageUrl
             }
         }
+
         return GET(url, headers)
     }
 
@@ -801,9 +804,11 @@ abstract class MangaDex(
     private class TagExclusionMode : Filter.Select<String>("Tag exclusion mode", arrayOf("All (and)", "Any (or)"), 1)
 
     // default selection (Rating Descending) matches popularMangaRequest url
-    class SortFilter : Filter.Sort("Sort",
+    class SortFilter : Filter.Sort(
+        "Sort",
         sortables.map { it.first }.toTypedArray(),
-        Selection(3, false))
+        Selection(3, false)
+    )
 
     private class OriginalLanguage : Filter.Select<String>("Original Language", SOURCE_LANG_LIST.map { it.first }.toTypedArray())
 
@@ -913,7 +918,9 @@ abstract class MangaDex(
         Tag("80", "Traditional Games"),
         Tag("81", "Virtual Reality"),
         Tag("82", "Zombies"),
-        Tag("83", "Incest")
+        Tag("83", "Incest"),
+        Tag("84", "Mafia"),
+        Tag("85", "Villainess")
     ).sortedWith(compareBy { it.name })
 
     private val GENRES = (getContentList() + getFormatList() + getGenreList() + getThemeList()).map { it.id to it.name }.toMap()
@@ -953,7 +960,8 @@ abstract class MangaDex(
             Triple("Number of comments", 4, 5),
             Triple("Rating", 6, 7),
             Triple("Views", 8, 9),
-            Triple("Follows", 10, 11))
+            Triple("Follows", 10, 11)
+        )
 
         private val SOURCE_LANG_LIST = listOf(
             Pair("All", "0"),
@@ -968,7 +976,8 @@ abstract class MangaDex(
             Pair("Korean", "28"),
             Pair("Spanish (LATAM)", "29"),
             Pair("Thai", "32"),
-            Pair("Filipino", "34"))
+            Pair("Filipino", "34")
+        )
 
         private var hasMangaPlus = false
     }
@@ -987,6 +996,47 @@ class CoverInterceptor : Interceptor {
             } else {
                 response
             }
+        }
+    }
+}
+
+class MdAtHomeReportInterceptor(
+    private val client: OkHttpClient,
+    private val headers: Headers
+) : Interceptor {
+
+    private val gson: Gson by lazy { Gson() }
+    private val mdAtHomeUrlRegex = Regex("""^https://[\w\d]+\.[\w\d]+\.mangadex\.network.*${'$'}""")
+
+    override fun intercept(chain: Interceptor.Chain): Response {
+        val originalRequest = chain.request()
+
+        return chain.proceed(chain.request()).let { response ->
+            val url = originalRequest.url().toString()
+            if (url.contains(mdAtHomeUrlRegex)) {
+                val jsonString = gson.toJson(
+                    mapOf(
+                        "url" to url,
+                        "success" to response.isSuccessful,
+                        "bytes" to response.peekBody(Long.MAX_VALUE).bytes().size
+                    )
+                )
+
+                val postResult = client.newCall(
+                    POST(
+                        "https://api.mangadex.network/report",
+                        headers,
+                        RequestBody.create(null, jsonString)
+                    )
+                )
+                try {
+                    postResult.execute()
+                } catch (e: Exception) {
+                    Log.e("MangaDex", "Error trying to POST report to MD@Home: ${e.message}")
+                }
+            }
+
+            response
         }
     }
 }

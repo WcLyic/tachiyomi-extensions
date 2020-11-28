@@ -17,16 +17,16 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.Locale
-import java.util.concurrent.TimeUnit
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import rx.Observable
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class TsukiMangas : HttpSource() {
 
@@ -178,7 +178,7 @@ class TsukiMangas : HttpSource() {
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val result = response.asJson().array[0].obj
+        val result = response.asJson().obj["manga"].array[0].obj
 
         return SManga.create().apply {
             title = result["TITULO"].string
@@ -230,7 +230,7 @@ class TsukiMangas : HttpSource() {
     private fun chapterListItemParse(obj: JsonObject, slug: String): SChapter = SChapter.create().apply {
         name = "Cap. " + obj["NUMERO"].string +
             (if (obj["TITULO"].string.isNotEmpty()) " - " + obj["TITULO"].string else "")
-        chapter_number = obj["NUMERO"].string.toFloatOrNull() ?: 0f
+        chapter_number = obj["NUMERO"].string.toFloatOrNull() ?: -1f
         scanlator = obj["scans"].array.joinToString { it.obj["NOME"].string }
         date_upload = DATE_FORMATTER.tryParseDate(obj["DATA"].string.substringBefore("T"))
         url = "/leitor/$slug/" + obj["NUMERO"].string
@@ -326,7 +326,7 @@ class TsukiMangas : HttpSource() {
 
     private fun SimpleDateFormat.tryParseDate(date: String): Long {
         return try {
-            parse(date).time
+            parse(date)?.time ?: 0L
         } catch (e: ParseException) {
             0L
         }
@@ -335,7 +335,8 @@ class TsukiMangas : HttpSource() {
     private fun Response.asJson(): JsonElement = JSON_PARSER.parse(body()!!.string())
 
     companion object {
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/81.0.4044.122 Safari/537.36"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36"
 
         private val JSON_PARSER by lazy { JsonParser() }
 

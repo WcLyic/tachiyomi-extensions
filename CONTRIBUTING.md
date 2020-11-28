@@ -65,7 +65,7 @@ src/<lang>/<mysourcename>/
 #### build.gradle
 Make sure that your new extension's `build.gradle` file follows the following structure:
 
-```groovy
+```gradle
 apply plugin: 'com.android.application'
 apply plugin: 'kotlin-android'
 
@@ -102,7 +102,7 @@ Extensions rely on [extensions-lib](https://github.com/tachiyomiorg/extensions-l
 
 [`duktape-stub`](https://github.com/inorichi/tachiyomi-extensions/tree/master/lib/duktape-stub) provides stubs for using Duktape functionality without pulling in the full library. Functionality is bundled into the main Tachiyomi app.
 
-```groovy
+```gradle
 dependencies {
     compileOnly project(':duktape-stub')
 }
@@ -112,7 +112,7 @@ dependencies {
 
 [`lib-ratelimit`](https://github.com/inorichi/tachiyomi-extensions/tree/master/lib/ratelimit) is a library for adding rate limiting functionality as an [OkHttp interceptor](https://square.github.io/okhttp/interceptors/).
 
-```groovy
+```gradle
 dependencies {
     implementation project(':lib-ratelimit')
 }
@@ -122,7 +122,7 @@ dependencies {
 
 [`lib-dataimage`](https://github.com/inorichi/tachiyomi-extensions/tree/master/lib/dataimage) is a library for handling [base 64 encoded image data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs) using an [OkHttp interceptor](https://square.github.io/okhttp/interceptors/).
 
-```groovy
+```gradle
 dependencies {
     implementation project(':lib-dataimage')
 }
@@ -134,7 +134,7 @@ You may find yourself needing additional functionality and wanting to add more d
 
 For example, an extension that needs Gson could add the following:
 
-```groovy
+```gradle
 dependencies {
     compileOnly 'com.google.code.gson:gson:2.8.2'
 }
@@ -170,7 +170,7 @@ The class which is refrenced and defined by `extClass` in `build.gradle`. This c
 
 #### Popular Manga
 
-a.k.a. the "Browse" source entry point in the app.
+a.k.a. the Browse source entry point in the app (invoked by tapping on the source name).
 
 - The app calls `fetchPopularManga` with `page=1`, and it returns a `MangasPage` and will continue to call it for next pages, when the user scrolls the manga list and more results must be fetched (until you pass `MangasPage.hasNextPage` as `false` which marks the end of the found manga list).
 - While passing magnas here you should at least set `url`, `title` and `thumbnail_url`.
@@ -178,7 +178,7 @@ a.k.a. the "Browse" source entry point in the app.
 
 #### Latest Manga
 
-a.k.a. the "Latest" source entry point in the app.
+a.k.a. the Latest source entry point in the app (invoked by tapping on the "Latest" button beside the source name).
 
 - Used if `supportsLatest` is `true` for a source
 - Similar to popular manga, but should be fetching the latest entries from a source.

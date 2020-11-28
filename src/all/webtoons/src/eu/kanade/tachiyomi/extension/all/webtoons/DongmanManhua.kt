@@ -5,15 +5,15 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
 import okhttp3.Headers
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.text.SimpleDateFormat
+import java.util.Locale
 
-class DongmanManhua : WebtoonsDefault("zh", "") {
+class DongmanManhua : WebtoonsDefault("zh", "", dateFormat = SimpleDateFormat("yyyy-M-d", Locale.ENGLISH)) {
     override val baseUrl = "https://www.dongmanmanhua.cn"
 
     override val name = "Dongman Manhua"
@@ -55,10 +55,6 @@ class DongmanManhua : WebtoonsDefault("zh", "") {
             url = element.select("a").attr("href").substringAfter(".cn")
             date_upload = chapterParseDate(element.select("span.date").text())
         }
-    }
-
-    override fun chapterParseDate(date: String): Long {
-        return SimpleDateFormat("yyyy-M-d", Locale.ENGLISH).parse(date).time
     }
 
     override fun getFilterList(): FilterList = FilterList()

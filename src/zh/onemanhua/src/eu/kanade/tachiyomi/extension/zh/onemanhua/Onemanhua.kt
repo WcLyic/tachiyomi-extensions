@@ -1,6 +1,7 @@
 package eu.kanade.tachiyomi.extension.zh.onemanhua
 
 import android.annotation.SuppressLint
+import android.net.Uri
 import android.util.Base64
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Filter
@@ -9,23 +10,24 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import java.util.regex.Pattern
-import javax.crypto.Cipher
-import javax.crypto.spec.SecretKeySpec
 import okhttp3.HttpUrl
 import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.regex.Pattern
+import javax.crypto.Cipher
+import javax.crypto.spec.SecretKeySpec
 
+// Originally, the site was called One漫画. The name has been changing every once in awhile
 class Onemanhua : ParsedHttpSource() {
     override val id = 8252565807829914103 // name used to be "One漫画"
     override val lang = "zh"
     override val supportsLatest = true
-    override val name = "OH漫画 (One漫画)"
-    override val baseUrl = "https://www.ohmanhua.com/"
+    override val name = "COCO漫画 (OH漫画)"
+    override val baseUrl = "https://www.cocomanhua.com/"
 
-    private var decryptKey = "fw12558899ertyui"
-    private var imageServerUrl = "https://img.ohmanhua.com/comic/"
+    private var decryptKey1 = "fw12558899ertyui"
+    private var decryptKey2 = "fw125gjdi9ertyui"
 
     // Common
     private var commonSelector = "li.fed-list-item"
@@ -109,15 +111,36 @@ class Onemanhua : ParsedHttpSource() {
         return SManga.create().apply {
             title = document.select("h1.fed-part-eone").first().text().trim()
             thumbnail_url = picElement.attr("data-original")
-            status = when (detailElements[0].select("a").first().text()) {
+
+            status = when (
+                detailElements.firstOrNull {
+                    it.children().firstOrNull {
+                        it2 ->
+                        it2.hasClass("fed-text-muted") && it2.ownText() == "状态"
+                    } != null
+                }?.select("a")?.first()?.text()
+            ) {
                 "连载中" -> SManga.ONGOING
                 "已完结" -> SManga.COMPLETED
                 else -> SManga.UNKNOWN
             }
-            author = detailElements[1].select("a").first().text()
 
-            genre = detailElements[4].select("a").joinToString { it.text() }
-            description = detailElements[5].select(".fed-part-esan").first().text().trim()
+            author = detailElements.firstOrNull {
+                it.children().firstOrNull {
+                    it2 ->
+                    it2.hasClass("fed-text-muted") && it2.ownText() == "作者"
+                } != null
+            }?.select("a")?.first()?.text()
+
+            genre = detailElements.firstOrNull {
+                it.children().firstOrNull {
+                    it2 ->
+                    it2.hasClass("fed-text-muted") && it2.ownText() == "类别"
+                } != null
+            }?.select("a")?.joinToString { it.text() }
+
+            description = document.select("ul.fed-part-rows li.fed-col-xs12.fed-show-md-block .fed-part-esan")
+                .firstOrNull()?.text()?.trim()
         }
     }
 
@@ -136,35 +159,100 @@ class Onemanhua : ParsedHttpSource() {
     override fun pageListParse(document: Document): List<Page> {
         // 1. get C_DATA from HTML
         val encodedData = getEncodedMangaData(document)
-        // 2. decode C_DATA by Base64
-        val decodedData = String(Base64.decode(encodedData, Base64.NO_WRAP))
-        // 3. decrypt C_DATA
-        val decryptedData = decryptAES(decodedData, decryptKey)
+        // 2. decrypt C_DATA
+        val decryptedData = decodeAndDecrypt(encodedData, decryptKey1)
 
-        val imgRelativePath = getImgRelativePath(decryptedData)
-        val startImg = getStartImg(decryptedData)
-        val totalPages = getTotalPages(decryptedData)
+        // 3. Extract values from C_DATA to formulate page urls
+        val imgType = regexExtractStringValue(
+            decryptedData,
+            "img_type:\"(.+?)\"",
+            "Unable to match for img_type"
+        )
+
+        return if (imgType.isEmpty()) {
+            processPagesFromExternal(decryptedData)
+        } else {
+            processPagesFromInternal(decryptedData)
+        }
+    }
+
+    private fun processPagesFromExternal(decryptedData: String): List<Page> {
+        val encodedUrlsDirect = regexExtractStringValue(
+            decryptedData,
+            "urls__direct:\"(.+?)\"",
+            "Unable to match for urls__direct"
+        )
+
+        val decodedUrlsDirect = String(Base64.decode(encodedUrlsDirect, Base64.NO_WRAP))
+        val pageUrlArr = decodedUrlsDirect.split("|SEPARATER|")
+
+        if (pageUrlArr.isNotEmpty()) {
+            throw Error("Here ${pageUrlArr[0]} and2 $decodedUrlsDirect")
+        }
 
         return mutableListOf<Page>().apply {
-            for (i in startImg..totalPages) {
-                add(Page(i, "", "${imageServerUrl}${imgRelativePath}${"%04d".format(i)}.jpg"))
+            for (i in pageUrlArr.indices) {
+                add(Page(i + 1, "", pageUrlArr[i]))
             }
         }
     }
 
-    private fun getEncodedMangaData(document: Document): String? {
+    private fun processPagesFromInternal(decryptedData: String): List<Page> {
+        val imageServerDomain = regexExtractStringValue(
+            decryptedData,
+            "domain:\"(.+?)\"",
+            "Unable to match for imageServerDomain"
+        )
+        val startImg = regexExtractStringValue(
+            decryptedData,
+            "startimg:([0-9]+?),",
+            "Unable to match for startimg"
+        ).let { Integer.parseInt(it) }
+
+        // Decode and decrypt relative path
+        val encodedRelativePath = regexExtractStringValue(
+            decryptedData,
+            "enc_code2:\"(.+?)\"",
+            "Unable to match for enc_code2"
+        )
+        val decryptedRelativePath = decodeAndDecrypt(encodedRelativePath, decryptKey2)
+
+        // Decode and decrypt total pages
+        val encodedTotalPages = regexExtractStringValue(
+            decryptedData,
+            "enc_code1:\"(.+?)\"",
+            "Unable to match for enc_code1"
+        )
+        val decryptedTotalPages = Integer.parseInt(decodeAndDecrypt(encodedTotalPages, decryptKey1))
+
+        return mutableListOf<Page>().apply {
+            for (i in startImg..decryptedTotalPages) {
+                add(Page(i, "", "https://$imageServerDomain/comic/${encodeUri(decryptedRelativePath)}${"%04d".format(i)}.jpg"))
+            }
+        }
+    }
+
+    private fun getEncodedMangaData(document: Document): String {
         val scriptElements = document.getElementsByTag("script")
         val pattern = Pattern.compile("C_DATA=\'(.+?)\'")
         for (element in scriptElements) {
             if (element.data().contains("C_DATA")) {
                 val matcher = pattern.matcher(element.data())
                 if (matcher.find()) {
-                    return matcher.group(1)
+                    val data = matcher.group(1)
+                    if (data != null) {
+                        return data
+                    }
                 }
             }
         }
 
         throw Error("Unable to match for C_DATA")
+    }
+
+    private fun decodeAndDecrypt(value: String, key: String): String {
+        val decodedValue = String(Base64.decode(value, Base64.NO_WRAP))
+        return decryptAES(decodedValue, key)
     }
 
     @SuppressLint("GetInstance")
@@ -183,33 +271,34 @@ class Onemanhua : ParsedHttpSource() {
         }
     }
 
-    private fun getImgRelativePath(mangaData: String): String {
-        val pattern = Pattern.compile("imgpath:\"(.+?)\"")
+    private fun regexExtractStringValue(mangaData: String, regex: String, messageIfError: String): String {
+        val pattern = Pattern.compile(regex)
         val matcher = pattern.matcher(mangaData)
         if (matcher.find()) {
-            return matcher.group(1) ?: throw Exception("imgpath not found")
+            return matcher.group(1) ?: throw Exception(messageIfError)
         }
 
-        throw Error("Unable to match for imgPath")
+        throw Error(messageIfError)
     }
 
-    private fun getTotalPages(mangaData: String): Int {
-        val pattern = Pattern.compile("totalimg:([0-9]+?),")
-        val matcher = pattern.matcher(mangaData)
-        if (matcher.find()) {
-            return matcher.group(1)?.let { Integer.parseInt(it) } ?: throw Exception("totalimg not found")
-        }
-
-        throw Error("Unable to match for totalimg")
+    /*
+    private fun regexExtractIntValue(mangaData: String, regex: String, messageIfError: String): Int {
+        return regexExtractStringValue(mangaData, regex, messageIfError).let { Integer.parseInt(it) }
     }
+    */
 
-    private fun getStartImg(mangaData: String): Int {
-        val pattern = Pattern.compile("startimg:([0-9]+?),")
-        val matcher = pattern.matcher(mangaData)
-        if (matcher.find()) {
-            return matcher.group(1)?.let { Integer.parseInt(it) } ?: throw Exception("startimg not found")
-        }
+    /*
+    private fun encodeUriComponent(str: String): String {
+        return URLEncoder.encode(str, "UTF-8")
+            .replace("+", "%20")
+            .replace("%7E", "~")
+            .replace("*", "%2A")
+    }
+    */
 
-        throw Error("Unable to match for startimg")
+    private fun encodeUri(str: String): String {
+        // https://stackoverflow.com/questions/31511922/is-uri-encode-in-android-equivalent-to-encodeuricomponent-in-javascript
+        val whitelistChar = "@#&=*+-_.,:!?()/~'%"
+        return Uri.encode(str, whitelistChar)
     }
 }

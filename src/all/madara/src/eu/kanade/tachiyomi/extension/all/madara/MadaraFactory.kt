@@ -4,7 +4,6 @@ import android.annotation.SuppressLint
 import eu.kanade.tachiyomi.annotations.Nsfw
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import eu.kanade.tachiyomi.source.model.Filter
@@ -13,8 +12,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
 import okhttp3.CacheControl
 import okhttp3.FormBody
 import okhttp3.Headers
@@ -24,32 +21,39 @@ import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
-import rx.Observable
+import java.text.SimpleDateFormat
+import java.util.Locale
+import java.util.concurrent.TimeUnit
 
 class MadaraFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         ATMSubs(),
         AdonisFansub(),
-        AhStudios(),
         AkuManga(),
         AllPornComic(),
+        AniMangaEs(),
         AoCTranslations(),
+        ApollComics(),
         ArangScans(),
         ArazNovel(),
         AsgardTeam(),
         AstralLibrary(),
-        AsuraScans(),
         Azora(),
         Bakaman(),
         BestManga(),
+        BestManhua(),
         BoysLove(),
+        CatOnHeadTranslations(),
         CatTranslator(),
         ChibiManga(),
         ComicKiba(),
         ComicsValley(),
         CopyPasteScan(),
+        CutiePie(),
+        DarkyuRealm(),
         DecadenceScans(),
         DetectiveConanAr(),
+        DiamondFansub(),
         DisasterScans(),
         DoujinHentai(),
         DoujinYosh(),
@@ -57,46 +61,61 @@ class MadaraFactory : SourceFactory {
         EinherjarScan(),
         FirstKissManga(),
         FirstKissManhua(),
+        FreeWebtoonCoins(),
         FriendlyTranslations(),
         FunList(),
         FurioScans(),
-        GetManhwa(),
         GoldenManga(),
         GuncelManga(),
         HeroManhua(),
+        HerozScanlation(),
+        HimeraFansub(),
         Hiperdex(),
+        Hscans(),
         HunterFansub(),
         IchirinNoHanaYuri(),
         ImmortalUpdates(),
         IsekaiScanCom(),
         JustForFun(),
+        JJutsuScans(),
         KMangaIn(),
         KingzManga(),
+        KisekiManga(),
         KlanKomik(),
         KlikManga(),
-        KnightNoScanlation(),
         KomikGo(),
         LilyManga(),
-        LuxyScans(),
+        Manga18Fun(),
         Manga347(),
         Manga3asq(),
         Manga68(),
         MangaAction(),
+        MangaArabOnline(),
         MangaArabTeam(),
+        MangaBaz(),
         MangaBob(),
+        MangaClash(),
+        MangaCultivator(),
         MangaDods(),
         MangaHentai(),
         MangaKiss(),
         MangaKomi(),
         MangaLord(),
+        MangaLandArabic(),
+        ManganeloLink(),
+        MangaNine(),
         MangaPhoenix(),
         MangaRawr(),
         MangaRead(),
         MangaReadOrg(),
         MangaRockTeam(),
-        MangaSY(),
+        MangaRocky(),
+        MangaRoma(),
         MangaScantrad(),
+        MangaSpark(),
+        MangaStarz(),
         MangaStream(),
+        MangaSY(),
         MangaTX(),
         MangaTurf(),
         MangaWT(),
@@ -104,11 +123,13 @@ class MadaraFactory : SourceFactory {
         Mangalek(),
         Mangareceh(),
         Mangasushi(),
+        MangaYaku(),
         MangazukiClubJP(),
         MangazukiClubKO(),
         MangazukiMe(),
         MangazukiOnline(),
         ManhuaBox(),
+        Manhuaga(),
         ManhuaPlus(),
         ManhuaUS(),
         ManhuasWorld(),
@@ -120,16 +141,23 @@ class MadaraFactory : SourceFactory {
         ManyToon(),
         ManyToonClub(),
         ManyToonMe(),
+        MarkScans(),
         MartialScans(),
         Milftoon(),
         MiracleScans(),
         MixedManga(),
+        MysticalMerries(),
+        NazarickScans(),
+        NekoBreaker(),
         NeoxScanlator(),
         NightComic(),
         NijiTranslations(),
         NinjaScans(),
         Ninjavi(),
+        NTSVoidScans(),
+        OffScan(),
         OnManga(),
+        OrigamiOrpheans(),
         PMScans(),
         PojokManga(),
         PornComix(),
@@ -137,12 +165,14 @@ class MadaraFactory : SourceFactory {
         RaiderScans(),
         ReadManhua(),
         RenaScans(),
-        SheaManga(),
+        RuyaManga(),
+        S2Manga(),
         Skymanga(),
         TheTopComic(),
         ThreeSixtyFiveManga(),
         ToonPoint(),
         Toonily(),
+        ToonGod(),
         ToonilyNet(),
         TopManhua(),
         TritiniaScans(),
@@ -153,27 +183,95 @@ class MadaraFactory : SourceFactory {
         TwilightScans(),
         Wakamics(),
         Wakascan(),
+        WebToonily(),
         WeScans(),
         WebNovel(),
         WebtoonXYZ(),
         WoopRead(),
-        WordExcerpt(),
         WuxiaWorld(),
         YaoiToshokan(),
         YokaiJump(),
         ZManga(),
-        ZinManga()
+        ZinManga(),
+        ShoujoHearts(),
+        AlianzaMarcial(),
+        OlaoeManga(),
+        FdmScan(),
+        ArgosScan(),
+        Kombatch(),
+        ProjetoScanlator(),
+        HikariScan(),
+        YuriVerso(),
+        MangaTeca()
         // Removed by request of site owner
         // EarlyManga(),
         // MangaGecesi(),
         // MangaWOW(),
         // MangaStein(),
+        // KnightNoScanlation(),
+        // AhStudios(),
     )
 }
 
-class AhStudios : Madara("AhStudios", "https://ahstudios.net", "es")
+class NekoBreaker : Madara("NekoBreaker", "https://nekobreaker.com", "pt-BR", SimpleDateFormat("MMMM dd, yyyy", Locale("pt")))
 
-class AsuraScans : Madara("AsuraScans", "https://asurascans.com", "en")
+class ManganeloLink : Madara("Manganelo.link", "https://manganelo.link", "en")
+
+class ApollComics : Madara("ApollComics", "https://apollcomics.xyz", "es", SimpleDateFormat("dd MMMM, yyyy", Locale("es")))
+
+class KisekiManga : Madara("KisekiManga", "https://kisekimanga.com", "en")
+
+class FreeWebtoonCoins : Madara("FreeWebtoonCoins", "https://freewebtooncoins.com", "en")
+
+class MangaRoma : Madara("MangaRoma", "https://mangaroma.com", "en")
+
+class NTSVoidScans : Madara("NTS Void Scans", "https://ntsvoidscans.com", "en")
+
+class ToonGod : Madara("ToonGod", "https://www.toongod.com", "en", SimpleDateFormat("dd MMM yyyy", Locale.US))
+
+class Hscans : Madara("Hscans", "https://hscans.com", "en", SimpleDateFormat("MMMM dd, yyyy", Locale.forLanguageTag("es")))
+
+class WebToonily : Madara("WebToonily", "https://webtoonily.com", "en")
+
+class Manga18Fun : Madara("Manga18 Fun", "https://manga18.fun", "en")
+
+class BestManhua : Madara("BestManhua", "https://bestmanhua.com", "en") {
+    override val pageListParseSelector = "li.blocks-gallery-item"
+}
+
+class CutiePie : Madara("Cutie Pie", "https://cutiepie.ga", "tr", SimpleDateFormat("dd MMMM yyyy", Locale.forLanguageTag("tr")))
+
+class DiamondFansub : Madara("DiamondFansub", "https://diamondfansub.com", "tr", SimpleDateFormat("MMMM dd, yyyy", Locale.forLanguageTag("tr")))
+
+class MangaYaku : Madara("MangaYaku", "https://mangayaku.my.id", "id")
+
+class RuyaManga : Madara("Rüya Manga", "https://www.ruyamanga.com", "tr", SimpleDateFormat("dd MMMM yyyy", Locale.forLanguageTag("tr")))
+
+class HimeraFansub : Madara("Himera Fansub", "https://himera-fansub.com", "tr", SimpleDateFormat("dd MMMM yyyy", Locale.forLanguageTag("tr")))
+
+class MangaBaz : Madara("MangaBaz", "https://mangabaz.com", "tr", SimpleDateFormat("dd MMMM yyyy", Locale.forLanguageTag("tr")))
+
+class Manhuaga : Madara("Manhuaga", "https://manhuaga.com", "en")
+
+class MangaCultivator : Madara("MangaCultivator", "https://mangacultivator.com", "en")
+
+class HerozScanlation : Madara("Heroz Scanlation", "https://herozscans.com", "en")
+
+class CatOnHeadTranslations : Madara("CatOnHeadTranslations", "https://catonhead.com", "en")
+
+class OffScan : Madara(
+    "Off Scan",
+    "https://offscan.top",
+    "pt-BR",
+    dateFormat = SimpleDateFormat("dd/MM/yy", Locale.US)
+)
+
+class MangaClash : Madara(
+    "Manga Clash",
+    "https://mangaclash.com",
+    "en",
+    dateFormat = SimpleDateFormat("MM/dd/yy", Locale.US)
+)
 
 class TritiniaScans : Madara("TritiniaScans", "https://tritiniaman.ga", "en") {
     // site is a bit broken
@@ -192,8 +290,8 @@ class TritiniaScans : Madara("TritiniaScans", "https://tritiniaman.ga", "en") {
 }
 
 class CopyPasteScan : Madara("CopyPasteScan", "https://copypastescan.xyz", "es")
-                                   
-class FunList : Madara("FunList", "https://funlist.online", "en")                                   
+
+class FunList : Madara("FunList", "https://funlist.online", "en")
 
 class Mangasushi : Madara("Mangasushi", "https://mangasushi.net", "en")
 
@@ -201,13 +299,21 @@ class MangaRawr : Madara("MangaRawr", "https://mangarawr.com", "en")
 
 class NinjaScans : Madara("NinjaScans", "https://ninjascans.com", "en")
 
-class ReadManhua : Madara("ReadManhua", "https://readmanhua.net", "en",
-    dateFormat = SimpleDateFormat("dd MMM yy", Locale.US))
+class ReadManhua : Madara(
+    "ReadManhua",
+    "https://readmanhua.net",
+    "en",
+    dateFormat = SimpleDateFormat("dd MMM yy", Locale.US)
+)
 
 class IsekaiScanCom : Madara("IsekaiScan.com", "https://isekaiscan.com", "en")
 
-class JustForFun : Madara("Just For Fun", "https://just-for-fun.ru", "ru",
-    dateFormat = SimpleDateFormat("yy.MM.dd", Locale.US))
+class JustForFun : Madara(
+    "Just For Fun",
+    "https://just-for-fun.ru",
+    "ru",
+    dateFormat = SimpleDateFormat("yy.MM.dd", Locale.US)
+)
 
 class AoCTranslations : Madara("Agent of Change Translations", "https://aoc.moe", "en") {
     override fun headersBuilder(): Headers.Builder = super.headersBuilder().add("Referer", baseUrl)
@@ -245,13 +351,19 @@ class AoCTranslations : Madara("Agent of Change Translations", "https://aoc.moe"
 
 class KomikGo : Madara("KomikGo", "https://komikgo.com", "id")
 
-class LuxyScans : Madara("Luxy Scans", "https://luxyscans.com", "en")
+class TsubakiNoScan : Madara(
+    "Tsubaki No Scan",
+    "https://tsubakinoscan.com",
+    "fr",
+    dateFormat = SimpleDateFormat("dd/MM/yy", Locale.US)
+)
 
-class TsubakiNoScan : Madara("Tsubaki No Scan", "https://tsubakinoscan.com", "fr",
-    dateFormat = SimpleDateFormat("dd/MM/yy", Locale.US))
-
-class YokaiJump : Madara("Yokai Jump", "https://yokaijump.fr", "fr",
-    dateFormat = SimpleDateFormat("dd/MM/yy", Locale.US))
+class YokaiJump : Madara(
+    "Yokai Jump",
+    "https://yokaijump.fr",
+    "fr",
+    dateFormat = SimpleDateFormat("dd/MM/yy", Locale.US)
+)
 
 class ZManga : Madara("ZManga", "https://zmanga.org", "es")
 
@@ -265,8 +377,12 @@ class MangazukiClubJP : Madara("Mangazuki.club", "https://mangazuki.club", "ja")
 
 class MangazukiClubKO : Madara("Mangazuki.club", "https://mangazuki.club", "ko")
 
-class FirstKissManga : Madara("1st Kiss", "https://1stkissmanga.com", "en",
-    dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)) {
+class FirstKissManga : Madara(
+    "1st Kiss",
+    "https://1stkissmanga.com",
+    "en",
+    dateFormat = SimpleDateFormat("dd MMM yyyy", Locale.US)
+) {
     override fun headersBuilder(): Headers.Builder = super.headersBuilder().add("Referer", baseUrl)
 }
 
@@ -291,8 +407,12 @@ class ManyToonMe : Madara("ManyToon.me", "https://manytoon.me", "en")
 
 class BoysLove : Madara("BoysLove", "https://boyslove.me", "en")
 
-class ChibiManga : Madara("Chibi Manga", "http://www.cmreader.info", "en",
-    dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)) {
+class ChibiManga : Madara(
+    "Chibi Manga",
+    "http://www.cmreader.info",
+    "en",
+    dateFormat = SimpleDateFormat("yyyy-MM-dd", Locale.US)
+) {
     override fun chapterListParse(response: Response): List<SChapter> {
         response.asJsoup().let { documet ->
             documet.select("li.parent.has-child").let { volumes ->
@@ -324,25 +444,6 @@ class AdonisFansub : Madara("Adonis Fansub", "https://manga.adonisfansub.com", "
     override val userAgentRandomizer = ""
     override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/page/$page/?m_orderby=views", headers)
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/page/$page/?m_orderby=latest", headers)
-}
-
-class GetManhwa : Madara("GetManhwa", "https://getmanhwa.co", "en") {
-    override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return client.newCall(mangaDetailsRequest(manga))
-            .asObservableSuccess()
-            .map { response ->
-                mangaDetailsParse(response.asJsoup(), manga).apply { initialized = true }
-            }
-    }
-    private fun mangaDetailsParse(document: Document, manga: SManga): SManga {
-        return SManga.create().apply {
-            if (manga.thumbnail_url.isNullOrEmpty()) thumbnail_url = searchMangaParse(client.newCall(searchMangaRequest(1, manga.title, FilterList())).execute())
-                .mangas.firstOrNull()?.thumbnail_url
-            author = document.select("div.summary-heading-creator a").joinToString { it.text() }
-            genre = document.select("div.genres-content a").joinToString { it.text() }
-            description = document.select("div.description-summary p").joinToString("\n") { it.text() }
-        }
-    }
 }
 
 @Nsfw
@@ -585,41 +686,43 @@ class DoujinHentai : Madara("DoujinHentai", "https://doujinhentai.net", "es", Si
         GenreSelectFilter()
     )
 
-    class GenreSelectFilter : UriPartFilter("Búsqueda de género", arrayOf(
-        Pair("<seleccionar>", ""),
-        Pair("Ecchi", "ecchi"),
-        Pair("Yaoi", "yaoi"),
-        Pair("Yuri", "yuri"),
-        Pair("Anal", "anal"),
-        Pair("Tetonas", "tetonas"),
-        Pair("Escolares", "escolares"),
-        Pair("Incesto", "incesto"),
-        Pair("Virgenes", "virgenes"),
-        Pair("Masturbacion", "masturbacion"),
-        Pair("Maduras", "maduras"),
-        Pair("Lolicon", "lolicon"),
-        Pair("Bikini", "bikini"),
-        Pair("Sirvientas", "sirvientas"),
-        Pair("Enfermera", "enfermera"),
-        Pair("Embarazada", "embarazada"),
-        Pair("Ahegao", "ahegao"),
-        Pair("Casadas", "casadas"),
-        Pair("Chica Con Pene", "chica-con-pene"),
-        Pair("Juguetes Sexuales", "juguetes-sexuales"),
-        Pair("Orgias", "orgias"),
-        Pair("Harem", "harem"),
-        Pair("Romance", "romance"),
-        Pair("Profesores", "profesores"),
-        Pair("Tentaculos", "tentaculos"),
-        Pair("Mamadas", "mamadas"),
-        Pair("Shota", "shota"),
-        Pair("Interracial", "interracial"),
-        Pair("Full Color", "full-colo"),
-        Pair("Sin Censura", "sin-censura"),
-        Pair("Futanari", "futanari"),
-        Pair("Doble Penetracion", "doble-penetracion"),
-        Pair("Cosplay", "cosplay")
-    )
+    class GenreSelectFilter : UriPartFilter(
+        "Búsqueda de género",
+        arrayOf(
+            Pair("<seleccionar>", ""),
+            Pair("Ecchi", "ecchi"),
+            Pair("Yaoi", "yaoi"),
+            Pair("Yuri", "yuri"),
+            Pair("Anal", "anal"),
+            Pair("Tetonas", "tetonas"),
+            Pair("Escolares", "escolares"),
+            Pair("Incesto", "incesto"),
+            Pair("Virgenes", "virgenes"),
+            Pair("Masturbacion", "masturbacion"),
+            Pair("Maduras", "maduras"),
+            Pair("Lolicon", "lolicon"),
+            Pair("Bikini", "bikini"),
+            Pair("Sirvientas", "sirvientas"),
+            Pair("Enfermera", "enfermera"),
+            Pair("Embarazada", "embarazada"),
+            Pair("Ahegao", "ahegao"),
+            Pair("Casadas", "casadas"),
+            Pair("Chica Con Pene", "chica-con-pene"),
+            Pair("Juguetes Sexuales", "juguetes-sexuales"),
+            Pair("Orgias", "orgias"),
+            Pair("Harem", "harem"),
+            Pair("Romance", "romance"),
+            Pair("Profesores", "profesores"),
+            Pair("Tentaculos", "tentaculos"),
+            Pair("Mamadas", "mamadas"),
+            Pair("Shota", "shota"),
+            Pair("Interracial", "interracial"),
+            Pair("Full Color", "full-colo"),
+            Pair("Sin Censura", "sin-censura"),
+            Pair("Futanari", "futanari"),
+            Pair("Doble Penetracion", "doble-penetracion"),
+            Pair("Cosplay", "cosplay")
+        )
     )
 }
 
@@ -645,7 +748,9 @@ class HunterFansub : Madara("Hunter Fansub", "https://hunterfansub.com", "es") {
     override val popularMangaUrlSelector = "div.post-title a:last-child"
 }
 
-class MangaArabTeam : Madara("مانجا عرب تيم Manga Arab Team", "https://mangakm.com", "ar") {
+class MangaArabOnline : Madara("Manga Arab Online مانجا عرب اون لاين", "https://mangaarabonline.com", "ar", SimpleDateFormat("MMM d, yyyy", Locale.forLanguageTag("ar")))
+
+class MangaArabTeam : Madara("مانجا عرب تيم Manga Arab Team", "https://mangaarabteam.com", "ar") {
     override fun imageRequest(page: Page): Request {
         return GET(page.imageUrl!!.replace("http:", "https:"))
     }
@@ -693,7 +798,7 @@ class Toonily : Madara("Toonily", "https://toonily.com", "en") {
     )
 }
 
-class MangaKomi : Madara("MangaKomi", "https://mangakomi.com", "en", SimpleDateFormat("MM/dd/yyyy", Locale.US))
+class MangaKomi : Madara("MangaKomi", "https://mangakomi.com", "en")
 
 class Wakamics : Madara("Wakamics", "https://wakamics.com", "en")
 
@@ -740,7 +845,7 @@ class GoldenManga : Madara("موقع لترجمة المانجا", "https://gold
 
 class Mangalek : Madara("مانجا ليك", "https://mangalek.com", "ar", SimpleDateFormat("MMMM dd, yyyy", Locale("ar")))
 
-class AstralLibrary : Madara("Astral Library", "https://astrallibrary.net", "en") {
+class AstralLibrary : Madara("Astral Library", "https://astrallibrary.net", "en", SimpleDateFormat("d MMM", Locale.US)) {
     override fun chapterListParse(response: Response): List<SChapter> = super.chapterListParse(response).reversed()
 }
 
@@ -785,10 +890,6 @@ class DisasterScans : Madara("Disaster Scans", "https://disasterscans.com", "en"
 
         return manga
     }
-}
-
-class MangaKiss : Madara("MangaKiss", "https://mangakiss.org", "en", SimpleDateFormat("dd/MM/yyyy", Locale.US)) {
-    override fun headersBuilder(): Headers.Builder = super.headersBuilder().add("Referer", baseUrl)
 }
 
 class MangaDods : Madara("MangaDods", "https://www.mangadods.com", "en", SimpleDateFormat("yyyy-MM-dd", Locale.US))
@@ -848,7 +949,17 @@ class MangaStream : Madara("MangaStream", "https://www.mangastream.cc", "en") {
     )
 }
 
-class NeoxScanlator : Madara("Neox Scanlator", "https://neoxscans.com", "pt-BR", SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR"))) {
+class NeoxScanlator : Madara(
+    "Neox Scanlator",
+    "https://neoxscans.com",
+    "pt-BR",
+    SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR"))
+) {
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+        .connectTimeout(1, TimeUnit.MINUTES)
+        .readTimeout(1, TimeUnit.MINUTES)
+        .build()
+
     override fun headersBuilder(): Headers.Builder = Headers.Builder()
         .add("User-Agent", USER_AGENT)
         .add("Referer", baseUrl)
@@ -858,7 +969,8 @@ class NeoxScanlator : Madara("Neox Scanlator", "https://neoxscans.com", "pt-BR",
     override fun getFilterList(): FilterList = FilterList(super.getFilterList().slice(3..4))
 
     companion object {
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.61 Safari/537.36"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
     }
 }
 
@@ -899,7 +1011,7 @@ class DecadenceScans : Madara("Decadence Scans", "https://reader.decadencescans.
 
 class MangaRockTeam : Madara("Manga Rock Team", "https://mangarockteam.com", "en")
 
-class MixedManga : Madara("Mixed Manga", "https://mixedmanga.com", "en") {
+class MixedManga : Madara("Mixed Manga", "https://mixedmanga.com", "en", SimpleDateFormat("d MMM yyyy", Locale.US)) {
     override fun headersBuilder(): Headers.Builder = super.headersBuilder().add("Referer", baseUrl)
 }
 
@@ -1044,8 +1156,6 @@ class TurkceManga : Madara("Türkçe Manga", "https://turkcemanga.com", "tr") {
 
 class EinherjarScan : Madara("Einherjar Scan", "https://einherjarscans.space", "en")
 
-class KnightNoScanlation : Madara("Knight no Scanlation", "https://knightnoscanlation.com", "es")
-
 class DoujinYosh : Madara("DoujinYosh", "https://doujinyosh.work", "id") {
     // source issue, doing this limits results to one page but not doing it returns no results at all
     override fun searchPage(page: Int) = ""
@@ -1186,8 +1296,6 @@ class TruyenTranhAudioOnline : Madara("TruyenTranhAudio.online", "https://truyen
 
 class MangaTurf : Madara("Manga Turf", "https://mangaturf.com", "en")
 
-class SheaManga : Madara("Shea Manga", "https://sheamanga.my.id", "id")
-
 class FurioScans : Madara("Furio Scans", "https://furioscans.com", "pt-BR", SimpleDateFormat("dd/MM/yyyy", Locale.getDefault()))
 
 class Mangareceh : Madara("Mangareceh", "https://mangareceh.id", "id")
@@ -1196,7 +1304,7 @@ class ComicKiba : Madara("ComicKiba", "https://comickiba.com", "en") {
     override val pageListParseSelector = "li.blocks-gallery-item img:nth-child(1)"
 }
 
-class KlanKomik : Madara("KlanKomik", "https://klankomik.com", "id")
+class KlanKomik : Madara("KlanKomik", "https://klankomik.com", "id", SimpleDateFormat("d MMM yyyy", Locale.US))
 
 class ToonPoint : Madara("ToonPoint", "https://toonpoint.com", "en") {
     override val userAgentRandomizer = ""
@@ -1223,25 +1331,8 @@ class TwilightScans : Madara("Twilight Scans", "https://twilightscans.com", "en"
 
 class DetectiveConanAr : Madara("شبكة كونان العربية", "https://www.manga.detectiveconanar.com", "ar")
 
-// mostly novels, doesn't include year in chapter dates (even for past years)
-class WordExcerpt : Madara("Word Excerpt", "https://wordexcerpt.com", "en") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/archive/webtoon/page/$page/?m_orderby=views", headers)
-    override fun popularMangaNextPageSelector() = "div.nav-previous a"
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/archive/webtoon/page/$page/?m_orderby=latest", headers)
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request = GET("$baseUrl/?s=the&post_type=wp-manga&genre[]=webtoon", headers)
-    override fun getFilterList(): FilterList = FilterList()
-}
-
 // mostly novels
-class WoopRead : Madara("WoopRead", "https://woopread.com", "en") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/?s&post_type=wp-manga&genre[0]=manhua&genre[1]=manhwa&m_orderby=views", headers)
-    override fun popularMangaParse(response: Response) = searchMangaParse(response)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/?s&post_type=wp-manga&genre[0]=manhua&genre[1]=manhwa&m_orderby=latest", headers)
-    override fun latestUpdatesParse(response: Response) = searchMangaParse(response)
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request =
-        GET("$baseUrl/?s=$query&post_type=wp-manga&genre[0]=manhua&genre[1]=manhwa&m_orderby=latest", headers)
-    override fun getFilterList(): FilterList = FilterList()
-}
+class WoopRead : Madara("WoopRead", "https://woopread.com", "en")
 
 class Ninjavi : Madara("Ninjavi", "https://ninjavi.com", "ar")
 
@@ -1265,3 +1356,133 @@ class ComicsValley : Madara("Comics Valley", "https://comicsvalley.com", "hi")
 class FriendlyTranslations : Madara("Friendly Translations", "https://friendlytranslationsscan.website", "en")
 
 class Wakascan : Madara("Wakascan", "https://wakascan.com", "fr")
+
+class ShoujoHearts : Madara("ShoujoHearts", "http://shoujohearts.com", "en") {
+    override fun popularMangaRequest(page: Int): Request =
+        POST("$baseUrl/reader/wp-admin/admin-ajax.php", formHeaders, formBuilder(page, true).build(), CacheControl.FORCE_NETWORK)
+    override fun latestUpdatesRequest(page: Int): Request =
+        POST("$baseUrl/reader/wp-admin/admin-ajax.php", formHeaders, formBuilder(page, false).build(), CacheControl.FORCE_NETWORK)
+    override fun searchPage(page: Int): String = "reader/page/$page/"
+}
+
+class AlianzaMarcial : Madara("AlianzaMarcial", "https://alianzamarcial.xyz", "es")
+
+class OlaoeManga : Madara("مانجا اولاو", "https://olaoe.giize.com", "ar")
+
+class FdmScan : Madara("FDM Scan", "https://fdmscan.com", "pt-BR", SimpleDateFormat("MMMM dd, yyyy", Locale("pt", "BR")))
+
+class ArgosScan : Madara("Argos Scan", "https://argosscan.com", "pt-BR", SimpleDateFormat("dd 'de' MMMM 'de' yyyy", Locale("pt", "BR")))
+
+class OrigamiOrpheans : Madara("Origami Orpheans", "https://origami-orpheans.com.br", "pt-BR")
+
+class DarkyuRealm : Madara("Darkyu Realm", "https://darkyuerealm.site", "pt-BR")
+
+class MangaKiss : Madara("Manga Kiss", "https://mangakiss.org", "en")
+
+class MangaRocky : Madara("Manga Rocky", "https://mangarocky.com", "en")
+
+class JJutsuScans : Madara("JJutsuScans", "https://jjutsuscans.com", "en")
+
+class S2Manga : Madara("S2Manga", "https://s2manga.com", "en")
+
+class MangaLandArabic : Madara("Manga Land Arabic", "https://mangalandarabic.com", "ar")
+
+class Kombatch : Madara("Kombatch", "https://kombatch.com", "id", SimpleDateFormat("d MMMM yyyy", Locale.forLanguageTag("id")))
+
+class ProjetoScanlator : Madara("Projeto Scanlator", "https://projetoscanlator.com", "pt-BR", SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR")))
+
+class HikariScan : Madara("Hikari Scan", "https://hikariscan.com.br", "pt-BR", SimpleDateFormat("dd 'de' MMMM 'de' yyyy", Locale("pt", "BR")))
+
+class NazarickScans : Madara("Nazarick Scans", "https://nazarickscans.com", "en") {
+    override fun popularMangaRequest(page: Int) = GET("$baseUrl/manga/page/$page/?m_orderby=trending", headers)
+    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/manga/page/$page/?m_orderby=trending", headers)
+    override fun popularMangaNextPageSelector(): String? = null
+    override fun latestUpdatesNextPageSelector(): String? = null
+}
+
+class MangaSpark : Madara("MangaSpark", "https://mangaspark.com", "ar") {
+    override fun popularMangaFromElement(element: Element): SManga {
+        val manga = SManga.create()
+
+        with(element) {
+            select(popularMangaUrlSelector).first()?.let {
+                manga.setUrlWithoutDomain(it.attr("abs:href"))
+                manga.title = it.ownText()
+            }
+
+            select("img").first()?.let {
+                manga.thumbnail_url = imageFromElement(it)?.replace("mangaspark", "mangalek")
+            }
+        }
+
+        return manga
+    }
+}
+
+class MangaStarz : Madara("Manga Starz", "https://mangastarz.com", "ar") {
+    override fun popularMangaFromElement(element: Element): SManga {
+        val manga = SManga.create()
+
+        with(element) {
+            select(popularMangaUrlSelector).first()?.let {
+                manga.setUrlWithoutDomain(it.attr("abs:href"))
+                manga.title = it.ownText()
+            }
+
+            select("img").first()?.let {
+                manga.thumbnail_url = imageFromElement(it)?.replace("mangastarz", "mangalek")
+            }
+        }
+
+        return manga
+    }
+}
+
+class MysticalMerries : Madara("Mystical Merries", "https://mysticalmerries.com", "en") {
+    override fun popularMangaRequest(page: Int) = GET("$baseUrl/genre/manhwa/page/$page/?m_orderby=trending", headers)
+    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/genre/manhwa/page/$page/?m_orderby=latest", headers)
+}
+
+class AniMangaEs : Madara("AniMangaEs", "http://animangaes.com", "en") {
+    override val pageListParseSelector = "div.text-left noscript"
+    override val chapterUrlSuffix = ""
+    override fun chapterListParse(response: Response): List<SChapter> = super.chapterListParse(response).reversed()
+}
+
+class MangaNine : Madara("Manga Nine", "https://manganine.com", "en")
+
+class MarkScans : Madara("Mark Scans", "https://markscans.online", "pt-BR")
+
+class YuriVerso : Madara(
+    "Yuri Verso",
+    "https://yuri.live",
+    "pt-BR",
+    SimpleDateFormat("dd/MM/yyyy", Locale("pt", "BR"))
+)
+
+class MangaTeca : Madara(
+    "MangaTeca",
+    "https://www.mangateca.com",
+    "pt-BR",
+    SimpleDateFormat("MMMM dd, yyyy", Locale("pt", "BR"))
+) {
+    override fun headersBuilder(): Headers.Builder = Headers.Builder()
+        .add("User-Agent", USER_AGENT)
+        .add("Referer", baseUrl)
+        .add("Origin", baseUrl)
+
+    override fun chapterFromElement(element: Element): SChapter {
+        val parsedChapter = super.chapterFromElement(element)
+
+        parsedChapter.date_upload = element.select("img").firstOrNull()?.attr("alt")
+            ?.let { parseChapterDate(it) }
+            ?: parseChapterDate(element.select("span.chapter-release-date i").firstOrNull()?.text())
+
+        return parsedChapter
+    }
+
+    companion object {
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.75 Safari/537.36"
+    }
+}

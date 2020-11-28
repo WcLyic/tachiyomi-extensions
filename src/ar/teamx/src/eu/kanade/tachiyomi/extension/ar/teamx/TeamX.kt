@@ -8,12 +8,12 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.util.concurrent.TimeUnit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.concurrent.TimeUnit
 
 class TeamX : ParsedHttpSource() {
 
@@ -44,8 +44,10 @@ class TeamX : ParsedHttpSource() {
         return SManga.create().apply {
             title = element.select(titleSelector).text()
             setUrlWithoutDomain(element.select("a").first().attr("href"))
-            thumbnail_url = element.select("img").let { if (it.hasAttr("data-src"))
-                it.attr("abs:data-src") else it.attr("abs:src") }
+            thumbnail_url = element.select("img").let {
+                if (it.hasAttr("data-src"))
+                    it.attr("abs:data-src") else it.attr("abs:src")
+            }
         }
     }
 
@@ -58,7 +60,7 @@ class TeamX : ParsedHttpSource() {
     override fun latestUpdatesRequest(page: Int): Request {
         if (page == 1) titlesAdded.clear()
 
-        return GET("$baseUrl/فصول-المانجا/" + if (page > 1) "page/$page/" else "", headers)
+        return GET("$baseUrl/احدث-الفصول/" + if (page > 1) "page/$page/" else "", headers)
     }
 
     override fun latestUpdatesParse(response: Response): MangasPage {
@@ -106,13 +108,38 @@ class TeamX : ParsedHttpSource() {
                 title = info.select("div.col-md-9").text()
                 description = info.select("div.story p").text()
                 genre = info.select("div.genre a").joinToString { it.text() }
-                thumbnail_url = info.select("img").let { if (it.hasAttr("data-src"))
-                    it.attr("abs:data-src") else it.attr("abs:src") }
+                thumbnail_url = info.select("img").let {
+                    if (it.hasAttr("data-src"))
+                        it.attr("abs:data-src") else it.attr("abs:src")
+                }
             }
         }
     }
 
     // Chapters
+    private fun chapterNextPageSelector() = "span.nextx_text a:contains(»)"
+
+    override fun chapterListParse(response: Response): List<SChapter> {
+        val allChapters = mutableListOf<SChapter>()
+        var document = response.asJsoup()
+
+        while (true) {
+            val pageChapters = document.select(chapterListSelector()).map { chapterFromElement(it) }
+            if (pageChapters.isEmpty())
+                break
+
+            allChapters += pageChapters
+
+            val hasNextPage = document.select(chapterNextPageSelector()).isNotEmpty()
+            if (!hasNextPage)
+                break
+
+            val nextUrl = document.select(chapterNextPageSelector()).attr("href")
+            document = client.newCall(GET(nextUrl, headers)).execute().asJsoup()
+        }
+
+        return allChapters
+    }
 
     // Filter out the fake chapters
     override fun chapterListSelector() = "div.single-manga-chapter div.col-md-12 a[href^=$baseUrl]"
@@ -127,9 +154,15 @@ class TeamX : ParsedHttpSource() {
     // Pages
 
     override fun pageListParse(document: Document): List<Page> {
-        return document.select("div#translationPageall img").mapIndexed { i, img ->
-            Page(i, "", img.let { if (it.hasAttr("data-src"))
-                it.attr("abs:data-src") else it.attr("abs:src") })
+        return document.select("div#translationPageall embed").mapIndexed { i, img ->
+            Page(
+                i,
+                "",
+                img.let {
+                    if (it.hasAttr("data-src"))
+                        it.attr("abs:data-src") else it.attr("abs:src")
+                }
+            )
         }
     }
 

@@ -12,9 +12,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.lang.UnsupportedOperationException
-import java.util.Calendar
-import java.util.regex.Pattern
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -22,6 +19,9 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import java.lang.UnsupportedOperationException
+import java.util.Calendar
+import java.util.regex.Pattern
 
 @Nsfw
 class Hentai2Read : ParsedHttpSource() {
@@ -38,6 +38,8 @@ class Hentai2Read : ParsedHttpSource() {
 
     companion object {
         const val imageBaseUrl = "https://static.hentaicdn.com/hentai"
+
+        const val PREFIX_ID_SEARCH = "id:"
 
         val pagesUrlPattern by lazy {
             Pattern.compile("""'images' : \[\"(.*?)[,]?\"\]""")
@@ -77,12 +79,15 @@ class Hentai2Read : ParsedHttpSource() {
     override fun latestUpdatesNextPageSelector() = popularMangaNextPageSelector()
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        val search = requestSearch(page, query, filters)
-        return client.newCall(search.first)
-            .asObservableSuccess()
-            .map { response ->
-                parseSearch(response, page, search.second)
-            }
+        return if (query.startsWith(PREFIX_ID_SEARCH)) {
+            val id = query.removePrefix(PREFIX_ID_SEARCH)
+            client.newCall(GET("$baseUrl/$id/", headers)).asObservableSuccess()
+                .map { MangasPage(listOf(mangaDetailsParse(it).apply { url = "/$id/" }), false) }
+        } else {
+            val search = requestSearch(page, query, filters)
+            client.newCall(search.first).asObservableSuccess()
+                .map { parseSearch(it, page, search.second) }
+        }
     }
 
     private fun requestSearch(page: Int, query: String, filters: FilterList): Pair<Request, String?> {
@@ -182,7 +187,7 @@ class Hentai2Read : ParsedHttpSource() {
         chapter.date_upload = element.select("div > small").text()?.let {
             val matcher = chapterDatePattern.matcher(it)
             if (matcher.find()) {
-                parseChapterDate(matcher.group(1))
+                parseChapterDate(matcher.group(1)!!)
             } else {
                 0L
             }
@@ -216,7 +221,7 @@ class Hentai2Read : ParsedHttpSource() {
         val m = pagesUrlPattern.matcher(response.body()!!.string())
         var i = 0
         while (m.find()) {
-            m.group(1).split(",").forEach {
+            m.group(1)?.split(",")?.forEach {
                 pages.add(Page(i++, "", imageBaseUrl + it.trim('"').replace("""\/""", "/")))
             }
         }
@@ -245,27 +250,27 @@ class Hentai2Read : ParsedHttpSource() {
     }
 
     override fun getFilterList() = FilterList(
-            SortOrder(getSortOrder()),
-            MangaNameSelect(),
-            Filter.Separator(),
-            ArtistName(),
-            ArtistNameSelect(),
-            Filter.Separator(),
-            CharacterName(),
-            CharacterNameSelect(),
-            Filter.Separator(),
-            ReleaseYear(),
-            ReleaseYearSelect(),
-            Filter.Separator(),
-            Status(),
-            Filter.Separator(),
-            TagSearchMode(),
-            Filter.Separator(),
-            TagList("Categories", getCategoryList()),
-            Filter.Separator(),
-            TagList("Tags", getTagList()),
-            Filter.Separator(),
-            TagList("Doujins", getDoujinList())
+        SortOrder(getSortOrder()),
+        MangaNameSelect(),
+        Filter.Separator(),
+        ArtistName(),
+        ArtistNameSelect(),
+        Filter.Separator(),
+        CharacterName(),
+        CharacterNameSelect(),
+        Filter.Separator(),
+        ReleaseYear(),
+        ReleaseYearSelect(),
+        Filter.Separator(),
+        Status(),
+        Filter.Separator(),
+        TagSearchMode(),
+        Filter.Separator(),
+        TagList("Categories", getCategoryList()),
+        Filter.Separator(),
+        TagList("Tags", getTagList()),
+        Filter.Separator(),
+        TagList("Doujins", getDoujinList())
     )
 
     private fun getSortOrder() = arrayOf(

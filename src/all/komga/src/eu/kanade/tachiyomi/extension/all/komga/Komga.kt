@@ -95,6 +95,39 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                         url.addQueryParameter("status", statusToInclude.joinToString(","))
                     }
                 }
+                is GenreGroup -> {
+                    val genreToInclude = mutableListOf<String>()
+                    filter.state.forEach { content ->
+                        if (content.state) {
+                            genreToInclude.add(content.name)
+                        }
+                    }
+                    if (genreToInclude.isNotEmpty()) {
+                        url.addQueryParameter("genre", genreToInclude.joinToString(","))
+                    }
+                }
+                is TagGroup -> {
+                    val tagToInclude = mutableListOf<String>()
+                    filter.state.forEach { content ->
+                        if (content.state) {
+                            tagToInclude.add(content.name)
+                        }
+                    }
+                    if (tagToInclude.isNotEmpty()) {
+                        url.addQueryParameter("tag", tagToInclude.joinToString(","))
+                    }
+                }
+                is PublisherGroup -> {
+                    val publisherToInclude = mutableListOf<String>()
+                    filter.state.forEach { content ->
+                        if (content.state) {
+                            publisherToInclude.add(content.name)
+                        }
+                    }
+                    if (publisherToInclude.isNotEmpty()) {
+                        url.addQueryParameter("publisher", publisherToInclude.joinToString(","))
+                    }
+                }
                 is Filter.Sort -> {
                     var sortCriteria = when (filter.state?.index) {
                         0 -> "metadata.titleSort"
@@ -135,7 +168,8 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 chapter_number = book.metadata.numberSort
                 name = "${book.metadata.number} - ${book.metadata.title} (${book.size})"
                 url = "$baseUrl/api/v1/books/${book.id}"
-                date_upload = parseDate(book.lastModified)
+                date_upload = book.metadata.releaseDate?.let { parseDate(it) }
+                    ?: parseDateTime(book.fileLastModified)
             }
         }.sortedByDescending { it.chapter_number }
     }
@@ -181,13 +215,22 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 "ENDED" -> SManga.COMPLETED
                 else -> SManga.UNKNOWN
             }
-            // TODO: remove safe calls in next iteration
-            genre = (metadata.genres?.plus(metadata.tags ?: emptySet())
-                ?: emptySet()).joinToString(", ")
+            genre = (metadata.genres + metadata.tags).joinToString(", ")
             description = metadata.summary
         }
 
     private fun parseDate(date: String?): Long =
+        if (date == null)
+            Date().time
+        else {
+            try {
+                SimpleDateFormat("yyyy-MM-dd", Locale.US).parse(date).time
+            } catch (ex: Exception) {
+                Date().time
+            }
+        }
+
+    private fun parseDateTime(date: String?): Long =
         if (date == null)
             Date().time
         else {
@@ -212,6 +255,12 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
     private class StatusFilter(name: String) : Filter.CheckBox(name, false)
     private class StatusGroup(filters: List<StatusFilter>) : Filter.Group<StatusFilter>("Status", filters)
     private class UnreadOnly : Filter.CheckBox("Unread only", false)
+    private class GenreFilter(genre: String) : Filter.CheckBox(genre, false)
+    private class GenreGroup(genres: List<GenreFilter>) : Filter.Group<GenreFilter>("Genres", genres)
+    private class TagFilter(tag: String) : Filter.CheckBox(tag, false)
+    private class TagGroup(tags: List<TagFilter>) : Filter.Group<TagFilter>("Tags", tags)
+    private class PublisherFilter(publisher: String) : Filter.CheckBox(publisher, false)
+    private class PublisherGroup(publishers: List<PublisherFilter>) : Filter.Group<PublisherFilter>("Publishers", publishers)
 
     override fun getFilterList(): FilterList =
         FilterList(
@@ -219,11 +268,17 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
             LibraryGroup(libraries.map { LibraryFilter(it.id, it.name) }.sortedBy { it.name.toLowerCase() }),
             CollectionGroup(collections.map { CollectionFilter(it.id, it.name) }.sortedBy { it.name.toLowerCase() }),
             StatusGroup(listOf("Ongoing", "Ended", "Abandoned", "Hiatus").map { StatusFilter(it) }),
+            GenreGroup(genres.map { GenreFilter(it) }),
+            TagGroup(tags.map { TagFilter(it) }),
+            PublisherGroup(publishers.map { PublisherFilter(it) }),
             SeriesSort()
         )
 
     private var libraries = emptyList<LibraryDto>()
     private var collections = emptyList<CollectionDto>()
+    private var genres = emptySet<String>()
+    private var tags = emptySet<String>()
+    private var publishers = emptySet<String>()
 
     override val name = "Komga${if (suffix.isNotBlank()) " ($suffix)" else ""}"
     override val lang = "en"
@@ -325,26 +380,80 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
         }
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe({ response ->
-                libraries = try {
-                    gson.fromJson(response.body()?.charStream()!!)
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }, {})
+            .subscribe(
+                { response ->
+                    libraries = try {
+                        gson.fromJson(response.body()?.charStream()!!)
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                },
+                {}
+            )
 
         Single.fromCallable {
             client.newCall(GET("$baseUrl/api/v1/collections?unpaged=true", headers)).execute()
         }
             .subscribeOn(Schedulers.io())
             .observeOn(AndroidSchedulers.mainThread())
-            .subscribe({ response ->
-                collections = try {
-                    gson.fromJson<PageWrapperDto<CollectionDto>>(response.body()?.charStream()!!).content
-                } catch (e: Exception) {
-                    emptyList()
-                }
-            }, {})
+            .subscribe(
+                { response ->
+                    collections = try {
+                        gson.fromJson<PageWrapperDto<CollectionDto>>(response.body()?.charStream()!!).content
+                    } catch (e: Exception) {
+                        emptyList()
+                    }
+                },
+                {}
+            )
+
+        Single.fromCallable {
+            client.newCall(GET("$baseUrl/api/v1/genres", headers)).execute()
+        }
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                { response ->
+                    genres = try {
+                        gson.fromJson(response.body()?.charStream()!!)
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                },
+                {}
+            )
+
+        Single.fromCallable {
+            client.newCall(GET("$baseUrl/api/v1/tags", headers)).execute()
+        }
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                { response ->
+                    tags = try {
+                        gson.fromJson(response.body()?.charStream()!!)
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                },
+                {}
+            )
+
+        Single.fromCallable {
+            client.newCall(GET("$baseUrl/api/v1/publishers", headers)).execute()
+        }
+            .subscribeOn(Schedulers.io())
+            .observeOn(AndroidSchedulers.mainThread())
+            .subscribe(
+                { response ->
+                    publishers = try {
+                        gson.fromJson(response.body()?.charStream()!!)
+                    } catch (e: Exception) {
+                        emptySet()
+                    }
+                },
+                {}
+            )
     }
 
     companion object {

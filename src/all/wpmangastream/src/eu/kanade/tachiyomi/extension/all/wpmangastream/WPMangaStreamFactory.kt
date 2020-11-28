@@ -1,5 +1,9 @@
 package eu.kanade.tachiyomi.extension.all.wpmangastream
 
+import com.github.salomonbrys.kotson.array
+import com.github.salomonbrys.kotson.obj
+import com.github.salomonbrys.kotson.string
+import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.Source
@@ -10,7 +14,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
-import java.io.IOException
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Interceptor
@@ -20,6 +23,9 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import java.io.IOException
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class WPMangaStreamFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
@@ -40,14 +46,43 @@ class WPMangaStreamFactory : SourceFactory {
         KomikindoCo(),
         ReadKomik(),
         MangaP(),
-        MangaProZ()
+        MangaProZ(),
+        Boosei(),
+        Mangakyo(),
+        AsuraScans(),
+        SilenceScan(),
+        SheaManga(),
+        FlameScans(),
+        GURUKomik(),
+        Rawkuma(),
+        KaisarKomik(),
+        MasterKomik()
     )
 }
 
-class SekteKomik : WPMangaStream("Sekte Komik (WP Manga Stream)", "https://sektekomik.com", "id") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
+class MasterKomik : WPMangaStream("MasterKomik", "https://masterkomik.com", "id")
+
+class KaisarKomik : WPMangaStream("Kaisar Komik", "https://kaisarkomik.com", "id")
+
+class Rawkuma : WPMangaStream("Rawkuma", "https://rawkuma.com/", "ja")
+
+class GURUKomik : WPMangaStream("GURU Komik", "https://gurukomik.com", "id", SimpleDateFormat("MMMM dd, yyyy", Locale.forLanguageTag("id")))
+
+class FlameScans : WPMangaStream("Flame Scans", "https://www.flame-scans.com", "en")
+
+class SheaManga : WPMangaStream(
+    "Shea Manga",
+    "https://sheamanga.my.id",
+    "id",
+    dateFormat = SimpleDateFormat("MMMM dd, yyyy", Locale.forLanguageTag("id"))
+)
+
+class AsuraScans : WPMangaStream("AsuraScans", "https://asurascans.com", "en") {
+    override val pageSelector = "div#readerarea img[lazy]"
 }
+
+class SekteKomik : WPMangaStream("Sekte Komik (WP Manga Stream)", "https://sektekomik.com", "id")
+
 class Kiryuu : WPMangaStream("Kiryuu (WP Manga Stream)", "https://kiryuu.co", "id") {
     override fun pageListParse(document: Document): List<Page> {
         return document.select("div#readerarea img").map { it.attr("abs:src") }
@@ -55,14 +90,20 @@ class Kiryuu : WPMangaStream("Kiryuu (WP Manga Stream)", "https://kiryuu.co", "i
             .mapIndexed { i, image -> Page(i, "", image) }
     }
 }
-class KomikAV : WPMangaStream("Komik AV (WP Manga Stream)", "https://komikav.com", "id") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
+
+class KomikAV : WPMangaStream(
+    "Komik AV (WP Manga Stream)",
+    "https://komikav.com",
+    "id",
+    dateFormat = SimpleDateFormat("MMMM dd, yyyy", Locale.forLanguageTag("id"))
+) {
+    override fun imageRequest(page: Page): Request {
+        return GET(page.imageUrl!!, headers)
+    }
 }
-class KomikStation : WPMangaStream("Komik Station (WP Manga Stream)", "https://komikstation.com", "id") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
-}
+
+class KomikStation : WPMangaStream("Komik Station (WP Manga Stream)", "https://komikstation.com", "id")
+
 class KomikCast : WPMangaStream("Komik Cast (WP Manga Stream)", "https://komikcast.com", "id") {
     override fun popularMangaRequest(page: Int): Request {
         return GET("$baseUrl/daftar-komik/page/$page/?order=popular", headers)
@@ -202,66 +243,72 @@ class WestManga : WPMangaStream("West Manga (WP Manga Stream)", "https://westman
         return manga
     }
 
-    private class SortByFilter : UriPartFilter("Sort By", arrayOf(
-        Pair("Default", ""),
-        Pair("A-Z", "A-Z"),
-        Pair("Latest Added", "latest"),
-        Pair("Popular", "popular")
-    ))
+    private class SortByFilter : UriPartFilter(
+        "Sort By",
+        arrayOf(
+            Pair("Default", ""),
+            Pair("A-Z", "A-Z"),
+            Pair("Latest Added", "latest"),
+            Pair("Popular", "popular")
+        )
+    )
 
-    private class GenreListFilter : UriPartFilter("Genre", arrayOf(
-        Pair("Default", ""),
-        Pair("4-Koma", "4-koma"),
-        Pair("Action", "action"),
-        Pair("Adventure", "adventure"),
-        Pair("Comedy", "comedy"),
-        Pair("Cooking", "cooking"),
-        Pair("Demons", "demons"),
-        Pair("Drama", "drama"),
-        Pair("Ecchi", "ecchi"),
-        Pair("Fantasy", "fantasy"),
-        Pair("FantasyAction", "fantasyaction"),
-        Pair("Game", "game"),
-        Pair("Gender Bender", "gender-bender"),
-        Pair("Gore", "gore"),
-        Pair("Harem", "harem"),
-        Pair("Historical", "historical"),
-        Pair("Horro", "horro"),
-        Pair("Horror", "horror"),
-        Pair("Isekai", "isekai"),
-        Pair("Isekai Action", "isekai-action"),
-        Pair("Josei", "josei"),
-        Pair("Magic", "magic"),
-        Pair("Manga", "manga"),
-        Pair("Manhua", "manhua"),
-        Pair("Martial arts", "martial-arts"),
-        Pair("Mature", "mature"),
-        Pair("Mecha", "mecha"),
-        Pair("Medical", "medical"),
-        Pair("Music", "music"),
-        Pair("Mystery", "mystery"),
-        Pair("Oneshot", "oneshot"),
-        Pair("Project", "project"),
-        Pair("Psychological", "psychological"),
-        Pair("Romance", "romance"),
-        Pair("School", "school"),
-        Pair("School life", "school-life"),
-        Pair("Sci fi", "sci-fi"),
-        Pair("Seinen", "seinen"),
-        Pair("Shoujo", "shoujo"),
-        Pair("Shoujo Ai", "shoujo-ai"),
-        Pair("Shounen", "shounen"),
-        Pair("Slice of Life", "slice-of-life"),
-        Pair("Sports", "sports"),
-        Pair("Super Power", "super-power"),
-        Pair("Supernatural", "supernatural"),
-        Pair("Suspense", "suspense"),
-        Pair("Thriller", "thriller"),
-        Pair("Tragedy", "tragedy"),
-        Pair("Vampire", "vampire"),
-        Pair("Webtoons", "webtoons"),
-        Pair("Yuri", "yuri")
-    ))
+    private class GenreListFilter : UriPartFilter(
+        "Genre",
+        arrayOf(
+            Pair("Default", ""),
+            Pair("4-Koma", "4-koma"),
+            Pair("Action", "action"),
+            Pair("Adventure", "adventure"),
+            Pair("Comedy", "comedy"),
+            Pair("Cooking", "cooking"),
+            Pair("Demons", "demons"),
+            Pair("Drama", "drama"),
+            Pair("Ecchi", "ecchi"),
+            Pair("Fantasy", "fantasy"),
+            Pair("FantasyAction", "fantasyaction"),
+            Pair("Game", "game"),
+            Pair("Gender Bender", "gender-bender"),
+            Pair("Gore", "gore"),
+            Pair("Harem", "harem"),
+            Pair("Historical", "historical"),
+            Pair("Horro", "horro"),
+            Pair("Horror", "horror"),
+            Pair("Isekai", "isekai"),
+            Pair("Isekai Action", "isekai-action"),
+            Pair("Josei", "josei"),
+            Pair("Magic", "magic"),
+            Pair("Manga", "manga"),
+            Pair("Manhua", "manhua"),
+            Pair("Martial arts", "martial-arts"),
+            Pair("Mature", "mature"),
+            Pair("Mecha", "mecha"),
+            Pair("Medical", "medical"),
+            Pair("Music", "music"),
+            Pair("Mystery", "mystery"),
+            Pair("Oneshot", "oneshot"),
+            Pair("Project", "project"),
+            Pair("Psychological", "psychological"),
+            Pair("Romance", "romance"),
+            Pair("School", "school"),
+            Pair("School life", "school-life"),
+            Pair("Sci fi", "sci-fi"),
+            Pair("Seinen", "seinen"),
+            Pair("Shoujo", "shoujo"),
+            Pair("Shoujo Ai", "shoujo-ai"),
+            Pair("Shounen", "shounen"),
+            Pair("Slice of Life", "slice-of-life"),
+            Pair("Sports", "sports"),
+            Pair("Super Power", "super-power"),
+            Pair("Supernatural", "supernatural"),
+            Pair("Suspense", "suspense"),
+            Pair("Thriller", "thriller"),
+            Pair("Tragedy", "tragedy"),
+            Pair("Vampire", "vampire"),
+            Pair("Webtoons", "webtoons"),
+            Pair("Yuri", "yuri")
+        )
+    )
 
     override fun getFilterList() = FilterList(
         Filter.Header("NOTE: sort and genre can't be combined and ignored when using text search!"),
@@ -388,15 +435,18 @@ class KomikGo : WPMangaStream("Komik GO (WP Manga Stream)", "https://komikgo.com
 
     private class TextField(name: String, val key: String) : Filter.Text(name)
 
-    private class SortBy : UriPartFilter("Sort by", arrayOf(
-        Pair("Relevance", ""),
-        Pair("Latest", "latest"),
-        Pair("A-Z", "alphabet"),
-        Pair("Rating", "rating"),
-        Pair("Trending", "trending"),
-        Pair("Most View", "views"),
-        Pair("New", "new-manga")
-    ))
+    private class SortBy : UriPartFilter(
+        "Sort by",
+        arrayOf(
+            Pair("Relevance", ""),
+            Pair("Latest", "latest"),
+            Pair("A-Z", "alphabet"),
+            Pair("Rating", "rating"),
+            Pair("Trending", "trending"),
+            Pair("Most View", "views"),
+            Pair("New", "new-manga")
+        )
+    )
 
     private class Status(name: String, val id: String = name) : Filter.TriState(name)
     private class StatusList(statuses: List<Status>) : Filter.Group<Status>("Status", statuses)
@@ -479,10 +529,7 @@ class KomikGo : WPMangaStream("Komik GO (WP Manga Stream)", "https://komikgo.com
     )
 }
 
-class KomikIndo : WPMangaStream("Komik Indo (WP Manga Stream)", "https://www.komikindo.web.id", "id") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=latest", headers)
-}
+class KomikIndo : WPMangaStream("Komik Indo (WP Manga Stream)", "https://www.komikindo.web.id", "id")
 
 class MangaSwat : WPMangaStream("MangaSwat", "https://mangaswat.com", "ar") {
     /**
@@ -621,25 +668,7 @@ class SekteDoujin : WPMangaStream("Sekte Doujin", "https://sektedoujin.com", "id
 
 class NonStopScans : WPMangaStream("Non-Stop Scans", "https://www.nonstopscans.com", "en")
 
-class KomikTap : WPMangaStream("KomikTap", "https://komiktap.net", "id") {
-    override fun popularMangaRequest(page: Int) = GET("$baseUrl/project/", headers)
-    override fun popularMangaNextPageSelector(): String? = null
-    override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/?page=$page", headers)
-    override fun latestUpdatesSelector() = "div.releases:contains(latest update) + div div.uta"
-    override fun latestUpdatesFromElement(element: Element): SManga {
-        return SManga.create().apply {
-            element.select("div.luf > a").let {
-                title = it.text()
-                setUrlWithoutDomain(it.attr("href"))
-            }
-            thumbnail_url = element.select("img").attr("abs:src")
-        }
-    }
-    // Source's search is semi-broken, filtered search returns "no results" for page > 1
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request = GET("$baseUrl/cari-manga/$query/page/$page/")
-    override fun searchMangaNextPageSelector() = "a.next.page-numbers"
-    override fun getFilterList() = FilterList()
-}
+class KomikTap : WPMangaStream("KomikTap", "https://komiktap.in/", "id")
 
 class Matakomik : WPMangaStream("Matakomik", "https://matakomik.com", "id") {
     override fun pageListParse(document: Document): List<Page> {
@@ -651,18 +680,99 @@ class Matakomik : WPMangaStream("Matakomik", "https://matakomik.com", "id") {
 
 class KomikindoCo : WPMangaStream("Komikindo.co", "https://komikindo.co", "id")
 
-class ReadKomik : WPMangaStream("Readkomik", "https://readkomik.com", "en") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
-}
+class ReadKomik : WPMangaStream("Readkomik", "https://readkomik.com", "en")
 
-class MangaP : WPMangaStream("MangaP", "https://mangap.me", "ar") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
-}
+class MangaP : WPMangaStream("MangaP", "https://mangap.me", "ar")
 
 class MangaProZ : WPMangaStream("Manga Pro Z", "https://mangaproz.com", "ar") {
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=popular", headers)
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/?page=$page&order=update", headers)
     override fun chapterFromElement(element: Element): SChapter = super.chapterFromElement(element).apply { name = name.removeSuffix(" free") }
+}
+
+class Boosei : WPMangaStream("Boosei", "https://boosei.com", "id")
+
+class Mangakyo : WPMangaStream("Mangakyo", "https://www.mangakyo.me", "id")
+
+class SilenceScan : WPMangaStream(
+    "Silence Scan",
+    "https://silencescan.net",
+    "pt-BR",
+    SimpleDateFormat("MMMM dd, yyyy", Locale("pt", "BR"))
+) {
+
+    override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
+        val infoEl = document.select("div.bigcontent, div.animefull").first()
+
+        author = infoEl.select("b:contains(Autor) + span").text()
+        artist = infoEl.select("b:contains(Artista) + span").text()
+        status = parseStatus(infoEl.select("div.imptdt:contains(Status) i").text())
+        description = infoEl.select("h2:contains(Sinopse) + div p").joinToString("\n") { it.text() }
+        genre = infoEl.select("b:contains(Gêneros) + span a").joinToString { it.text() }
+        thumbnail_url = infoEl.select("div.thumb img").imgAttr()
+    }
+
+    override fun chapterFromElement(element: Element): SChapter = SChapter.create().apply {
+        name = element.select("span.chapternum").text()
+        scanlator = this@SilenceScan.name
+        date_upload = element.select("span.chapterdate").firstOrNull()?.text()
+            ?.let { parseChapterDate(it) } ?: 0
+        setUrlWithoutDomain(element.select("div.eph-num > a").attr("href"))
+    }
+
+    override fun pageListParse(document: Document): List<Page> {
+        val chapterObj = document.select("script:containsData(ts_reader)").first()
+            .data()
+            .substringAfter("run(")
+            .substringBeforeLast(");")
+            .let { JSON_PARSER.parse(it) }
+            .obj
+
+        if (chapterObj["sources"].array.size() == 0) {
+            return emptyList()
+        }
+
+        val firstServerAvailable = chapterObj["sources"].array[0].obj
+
+        return firstServerAvailable["images"].array
+            .mapIndexed { i, pageUrl -> Page(i, "", pageUrl.string) }
+    }
+
+    override fun getGenreList(): List<Genre> = listOf(
+        Genre("4-koma", "4-koma"),
+        Genre("Ação", "acao"),
+        Genre("Adulto", "adulto"),
+        Genre("Artes marciais", "artes-marciais"),
+        Genre("Comédia", "comedia"),
+        Genre("Comedy", "comedy"),
+        Genre("Culinária", "culinaria"),
+        Genre("Drama", "drama"),
+        Genre("Ecchi", "ecchi"),
+        Genre("Esporte", "esporte"),
+        Genre("Fantasia", "fantasia"),
+        Genre("Gore", "gore"),
+        Genre("Harém", "harem"),
+        Genre("Horror", "horror"),
+        Genre("Isekai", "isekai"),
+        Genre("Militar", "militar"),
+        Genre("Mistério", "misterio"),
+        Genre("Oneshot", "oneshot"),
+        Genre("Parcialmente Dropado", "parcialmente-dropado"),
+        Genre("Psicológico", "psicologico"),
+        Genre("Romance", "romance"),
+        Genre("School Life", "school-life"),
+        Genre("Sci-fi", "sci-fi"),
+        Genre("Seinen", "seinen"),
+        Genre("Shoujo Ai", "shoujo-ai"),
+        Genre("Shounen", "shounen"),
+        Genre("Slice of life", "slice-of-life"),
+        Genre("Sobrenatural", "sobrenatural"),
+        Genre("Supernatural", "supernatural"),
+        Genre("Tragédia", "tragedia"),
+        Genre("Vida Escolar", "vida-escolar"),
+        Genre("Violência sexual", "violencia-sexual"),
+        Genre("Yuri", "yuri")
+    )
+
+    companion object {
+        private val JSON_PARSER by lazy { JsonParser() }
+    }
 }

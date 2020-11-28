@@ -6,9 +6,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import java.text.ParseException
-import java.text.SimpleDateFormat
-import java.util.Locale
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -16,6 +13,9 @@ import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import org.jsoup.select.Elements
+import java.text.ParseException
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class MangaHost : ParsedHttpSource() {
 
@@ -24,7 +24,7 @@ class MangaHost : ParsedHttpSource() {
 
     override val name = "Mangá Host"
 
-    override val baseUrl = "https://mangahost2.com"
+    override val baseUrl = "https://mangahosted.com"
 
     override val lang = "pt-BR"
 
@@ -36,16 +36,20 @@ class MangaHost : ParsedHttpSource() {
         .add("User-Agent", USER_AGENT)
         .add("Referer", baseUrl)
 
-    private fun genericMangaFromElement(element: Element, attr: String = "src"): SManga =
+    private fun genericMangaFromElement(element: Element): SManga =
         SManga.create().apply {
+            val thumbnailEl = element.select("img")
+            val thumbnailAttr = if (thumbnailEl.hasAttr("data-path")) "data-path" else "src"
+
             title = element.attr("title").withoutLanguage()
-            thumbnail_url = element.select("img").attr(attr).toLargeUrl()
+            thumbnail_url = thumbnailEl.attr(thumbnailAttr).toLargeUrl()
             setUrlWithoutDomain(element.attr("href").substringBeforeLast("-mh"))
         }
 
     override fun popularMangaRequest(page: Int): Request {
+        val listPath = if (page == 1) "" else "/mais-visualizados/page/${page - 1}"
         val newHeaders = headersBuilder()
-            .set("Referer", "$baseUrl/mangas" + (if (page == 1) "" else "/mais-visualizados/page/${page - 1}"))
+            .set("Referer", "$baseUrl/mangas$listPath")
             .build()
 
         val pageStr = if (page != 1) "/page/$page" else ""
@@ -59,8 +63,9 @@ class MangaHost : ParsedHttpSource() {
     override fun popularMangaNextPageSelector() = "div.wp-pagenavi:has(a.nextpostslink)"
 
     override fun latestUpdatesRequest(page: Int): Request {
+        val listPath = if (page == 1) "" else "/lancamentos/page/${page - 1}"
         val newHeaders = headersBuilder()
-            .set("Referer", baseUrl + (if (page == 1) "" else "/lancamentos/page/${page - 1}"))
+            .set("Referer", baseUrl + listPath)
             .build()
 
         val pageStr = if (page != 1) "/page/$page" else ""
@@ -82,23 +87,21 @@ class MangaHost : ParsedHttpSource() {
 
     override fun searchMangaSelector() = "table.table-search > tbody > tr > td:eq(0) > a"
 
-    override fun searchMangaFromElement(element: Element): SManga = genericMangaFromElement(element, "data-path")
+    override fun searchMangaFromElement(element: Element): SManga = genericMangaFromElement(element)
 
     override fun searchMangaNextPageSelector(): String? = null
 
-    override fun mangaDetailsParse(document: Document): SManga {
+    override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
         val infoElement = document.select("div.box-content div.w-row div.w-col:eq(1) article")
 
-        return SManga.create().apply {
-            author = infoElement.select("div.text li div:contains(Autor:)").textWithoutLabel()
-            artist = infoElement.select("div.text li div:contains(Arte:)").textWithoutLabel()
-            genre = infoElement.select("h3.subtitle + div.tags a").joinToString { it.text() }
-            description = infoElement.select("div.text div.paragraph").first()?.text()
-                ?.substringBefore("Relacionados:")
-            status = infoElement.select("div.text li div:contains(Status:)").text().toStatus()
-            thumbnail_url = document.select("div.box-content div.w-row div.w-col:eq(0) div.widget img")
-                .attr("src")
-        }
+        author = infoElement.select("div.text li div:contains(Autor:)").textWithoutLabel()
+        artist = infoElement.select("div.text li div:contains(Arte:)").textWithoutLabel()
+        genre = infoElement.select("h3.subtitle + div.tags a").joinToString { it.text() }
+        description = infoElement.select("div.text div.paragraph").first()?.text()
+            ?.substringBefore("Relacionados:")
+        status = infoElement.select("div.text li div:contains(Status:)").text().toStatus()
+        thumbnail_url = document.select("div.box-content div.w-row div.w-col:eq(0) div.widget img")
+            .attr("src")
     }
 
     override fun chapterListSelector(): String =
@@ -109,7 +112,7 @@ class MangaHost : ParsedHttpSource() {
         scanlator = element.select("div.pop-content small strong").text()
         date_upload = element.select("small.clearfix").text()
             .substringAfter("Adicionado em ")
-            .let { DATE_FORMAT.tryParseTime(it) }
+            .toDate()
         chapter_number = element.select("div.pop-title span.btn-caps").text()
             .toFloatOrNull() ?: 1f
         setUrlWithoutDomain(element.select("div.tags a").attr("href"))
@@ -139,32 +142,35 @@ class MangaHost : ParsedHttpSource() {
         return GET(page.imageUrl!!, newHeaders)
     }
 
+    private fun String.toDate(): Long {
+        return try {
+            DATE_FORMAT.parse(this)?.time ?: 0L
+        } catch (e: ParseException) {
+            0L
+        }
+    }
+
     private fun String.toStatus() = when {
         contains("Ativo") -> SManga.ONGOING
         contains("Completo") -> SManga.COMPLETED
         else -> SManga.UNKNOWN
     }
 
-    private fun SimpleDateFormat.tryParseTime(date: String): Long {
-        return try {
-            parse(date)!!.time
-        } catch (e: ParseException) {
-            0L
-        }
-    }
-
     private fun String.withoutLanguage(): String = replace(LANG_REGEX, "")
 
-    private fun String.toLargeUrl(): String = replace(IMAGE_REGEX, ".")
+    private fun String.toLargeUrl(): String = replace(IMAGE_REGEX, "_full.")
 
     private fun Elements.textWithoutLabel(): String = text()!!.substringAfter(":").trim()
 
     companion object {
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/84.0.4147.89 Safari/537.36"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.193 Safari/537.36"
 
         private val LANG_REGEX = "( )?\\((PT-)?BR\\)".toRegex()
         private val IMAGE_REGEX = "_(small|medium|xmedium)\\.".toRegex()
 
-        private val DATE_FORMAT by lazy { SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH) }
+        private val DATE_FORMAT by lazy {
+            SimpleDateFormat("MMM dd, yyyy", Locale.ENGLISH)
+        }
     }
 }

@@ -5,24 +5,27 @@ import android.content.SharedPreferences
 import android.support.v7.preference.ListPreference
 import android.support.v7.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class TuMangaOnline : ConfigurableSource, ParsedHttpSource() {
 
@@ -93,32 +96,44 @@ class TuMangaOnline : ConfigurableSource, ParsedHttpSource() {
                     }
                 }
                 is WebcomicFilter -> {
-                    url.addQueryParameter("webcomic", when (filter.state) {
-                        Filter.TriState.STATE_INCLUDE -> "true"
-                        Filter.TriState.STATE_EXCLUDE -> "false"
-                        else -> ""
-                    })
+                    url.addQueryParameter(
+                        "webcomic",
+                        when (filter.state) {
+                            Filter.TriState.STATE_INCLUDE -> "true"
+                            Filter.TriState.STATE_EXCLUDE -> "false"
+                            else -> ""
+                        }
+                    )
                 }
                 is FourKomaFilter -> {
-                    url.addQueryParameter("yonkoma", when (filter.state) {
-                        Filter.TriState.STATE_INCLUDE -> "true"
-                        Filter.TriState.STATE_EXCLUDE -> "false"
-                        else -> ""
-                    })
+                    url.addQueryParameter(
+                        "yonkoma",
+                        when (filter.state) {
+                            Filter.TriState.STATE_INCLUDE -> "true"
+                            Filter.TriState.STATE_EXCLUDE -> "false"
+                            else -> ""
+                        }
+                    )
                 }
                 is AmateurFilter -> {
-                    url.addQueryParameter("amateur", when (filter.state) {
-                        Filter.TriState.STATE_INCLUDE -> "true"
-                        Filter.TriState.STATE_EXCLUDE -> "false"
-                        else -> ""
-                    })
+                    url.addQueryParameter(
+                        "amateur",
+                        when (filter.state) {
+                            Filter.TriState.STATE_INCLUDE -> "true"
+                            Filter.TriState.STATE_EXCLUDE -> "false"
+                            else -> ""
+                        }
+                    )
                 }
                 is EroticFilter -> {
-                    url.addQueryParameter("erotic", when (filter.state) {
-                        Filter.TriState.STATE_INCLUDE -> "true"
-                        Filter.TriState.STATE_EXCLUDE -> "false"
-                        else -> ""
-                    })
+                    url.addQueryParameter(
+                        "erotic",
+                        when (filter.state) {
+                            Filter.TriState.STATE_INCLUDE -> "true"
+                            Filter.TriState.STATE_EXCLUDE -> "false"
+                            else -> ""
+                        }
+                    )
                 }
                 is GenreList -> {
                     filter.state
@@ -138,6 +153,7 @@ class TuMangaOnline : ConfigurableSource, ParsedHttpSource() {
     override fun searchMangaFromElement(element: Element): SManga = popularMangaFromElement(element)
 
     override fun mangaDetailsParse(document: Document) = SManga.create().apply {
+        title = document.select("h2.element-subtitle").text()
         document.select("h5.card-title").let {
             author = it?.first()?.attr("title")?.substringAfter(", ")
             artist = it?.last()?.attr("title")?.substringAfter(", ")
@@ -230,10 +246,16 @@ class TuMangaOnline : ConfigurableSource, ParsedHttpSource() {
     override fun pageListParse(document: Document): List<Page> = mutableListOf<Page>().apply {
         if (getPageMethod() == "cascade") {
             document.select("div.viewer-container img").forEach {
-                add(Page(size, "", it.let {
-                    if (it.hasAttr("data-src"))
-                        it.attr("abs:data-src") else it.attr("abs:src")
-                }))
+                add(
+                    Page(
+                        size,
+                        "",
+                        it.let {
+                            if (it.hasAttr("data-src"))
+                                it.attr("abs:data-src") else it.attr("abs:src")
+                        }
+                    )
+                )
             }
         } else {
             val pageList = document.select("#viewer-pages-select").first().select("option").map { it.attr("value").toInt() }
@@ -251,31 +273,62 @@ class TuMangaOnline : ConfigurableSource, ParsedHttpSource() {
         return document.select("div.viewer-container > div.img-container > img.viewer-image").attr("src")
     }
 
-    private class Types : UriPartFilter("Filtrar por tipo", arrayOf(
-        Pair("Ver todo", ""),
-        Pair("Manga", "manga"),
-        Pair("Manhua", "manhua"),
-        Pair("Manhwa", "manhwa"),
-        Pair("Novela", "novel"),
-        Pair("One shot", "one_shot"),
-        Pair("Doujinshi", "doujinshi"),
-        Pair("Oel", "oel")
-    ))
+    private fun searchMangaByIdRequest(id: String) = GET("$baseUrl/$PREFIX_LIBRARY/$id", headers)
 
-    private class Demography : UriPartFilter("Filtrar por demografía", arrayOf(
-        Pair("Ver todo", ""),
-        Pair("Seinen", "seinen"),
-        Pair("Shoujo", "shoujo"),
-        Pair("Shounen", "shounen"),
-        Pair("Josei", "josei"),
-        Pair("Kodomo", "kodomo")
-    ))
+    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
+        return if (query.startsWith(PREFIX_ID_SEARCH)) {
+            val realQuery = query.removePrefix(PREFIX_ID_SEARCH)
 
-    private class FilterBy : UriPartFilter("Campo de orden", arrayOf(
-        Pair("Título", "title"),
-        Pair("Autor", "author"),
-        Pair("Compañia", "company")
-    ))
+            client.newCall(searchMangaByIdRequest(realQuery))
+                .asObservableSuccess()
+                .map { response ->
+                    val details = mangaDetailsParse(response)
+                    details.url = "/$PREFIX_LIBRARY/$realQuery"
+                    MangasPage(listOf(details), false)
+                }
+        } else {
+            client.newCall(searchMangaRequest(page, query, filters))
+                .asObservableSuccess()
+                .map { response ->
+                    searchMangaParse(response)
+                }
+        }
+    }
+
+    private class Types : UriPartFilter(
+        "Filtrar por tipo",
+        arrayOf(
+            Pair("Ver todo", ""),
+            Pair("Manga", "manga"),
+            Pair("Manhua", "manhua"),
+            Pair("Manhwa", "manhwa"),
+            Pair("Novela", "novel"),
+            Pair("One shot", "one_shot"),
+            Pair("Doujinshi", "doujinshi"),
+            Pair("Oel", "oel")
+        )
+    )
+
+    private class Demography : UriPartFilter(
+        "Filtrar por demografía",
+        arrayOf(
+            Pair("Ver todo", ""),
+            Pair("Seinen", "seinen"),
+            Pair("Shoujo", "shoujo"),
+            Pair("Shounen", "shounen"),
+            Pair("Josei", "josei"),
+            Pair("Kodomo", "kodomo")
+        )
+    )
+
+    private class FilterBy : UriPartFilter(
+        "Campo de orden",
+        arrayOf(
+            Pair("Título", "title"),
+            Pair("Autor", "author"),
+            Pair("Compañia", "company")
+        )
+    )
 
     class SortBy : Filter.Sort(
         "Ordenar por",
@@ -452,6 +505,9 @@ class TuMangaOnline : ConfigurableSource, ParsedHttpSource() {
         private const val DEDUP_PREF = "deduppref"
         private const val PAGEGET_PREF_Title = "Método para la descarga de imágenes"
         private const val PAGEGET_PREF = "pagemethodpref"
+
+        const val PREFIX_LIBRARY = "library"
+        const val PREFIX_ID_SEARCH = "id:"
 
         private val SORTABLES = listOf(
             Pair("Me gusta", "likes_count"),

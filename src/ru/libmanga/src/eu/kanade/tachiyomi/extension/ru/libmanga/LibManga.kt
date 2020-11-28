@@ -25,8 +25,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.text.SimpleDateFormat
-import java.util.Locale
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
@@ -36,6 +34,8 @@ import org.jsoup.nodes.Element
 import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class LibManga : ConfigurableSource, HttpSource() {
 
@@ -55,18 +55,26 @@ class LibManga : ConfigurableSource, HttpSource() {
 
     override fun headersBuilder() = Headers.Builder().apply {
         add("User-Agent", "Mozilla/5.0 (Windows NT 6.3; WOW64)")
-        add("Accept", "*/*")
+        add("Accept", "image/webp,*/*;q=0.8")
     }
 
     private val jsonParser = JsonParser()
 
     private var server: String? = preferences.getString(SERVER_PREF, null)
 
+    private val defaultServer = "https://img2.emanga.ru"
+
+    private val servers = mapOf(
+        "secondary" to "https://img2.emanga.ru",
+        "fourth" to "https://img4.imgslib.ru",
+        "compress" to "https://img3.cdnlib.org",
+    )
+
     override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
         val serverPref = androidx.preference.ListPreference(screen.context).apply {
             key = SERVER_PREF
             title = SERVER_PREF_Title
-            entries = arrayOf("Основной", "Второй (тестовый)", "Сжатия (эконом трафика)")
+            entries = arrayOf("Основной", "Второй (тестовый)", "Третий (эконом трафика)")
             entryValues = arrayOf("secondary", "fourth", "compress")
             summary = "%s"
 
@@ -83,7 +91,7 @@ class LibManga : ConfigurableSource, HttpSource() {
         val serverPref = ListPreference(screen.context).apply {
             key = SERVER_PREF
             title = SERVER_PREF_Title
-            entries = arrayOf("Основной", "Второй (тестовый)", "Сжатия (эконом трафика)")
+            entries = arrayOf("Основной", "Второй (тестовый)", "Третий (эконом трафика)")
             entryValues = arrayOf("secondary", "fourth", "compress")
             summary = "%s"
 
@@ -94,6 +102,10 @@ class LibManga : ConfigurableSource, HttpSource() {
         }
 
         screen.addPreference(serverPref)
+    }
+
+    private fun imageServerUrl(): String {
+        return this.servers.getOrDefault(this.server, this.defaultServer)
     }
 
     override fun latestUpdatesRequest(page: Int) = GET(baseUrl, headers)
@@ -168,8 +180,9 @@ class LibManga : ConfigurableSource, HttpSource() {
 
     private fun popularMangaFromElement(el: JsonElement) = SManga.create().apply {
         val slug = el["slug"].string
+        val cover = el["cover"].string
         title = el["name"].string
-        thumbnail_url = "$baseUrl/uploads/cover/$slug/cover/cover_250x350.jpg"
+        thumbnail_url = "$baseUrl/uploads/cover/$slug/cover/${cover}_250x350.jpg"
         url = "/$slug"
     }
 
@@ -199,7 +212,8 @@ class LibManga : ConfigurableSource, HttpSource() {
             body.select(".info-list__row:has(strong:contains(Перевод))")
                 .first()
                 .select("span.m-label")
-                .text()) {
+                .text()
+        ) {
             "продолжается" -> SManga.ONGOING
             "завершен" -> SManga.COMPLETED
             else -> SManga.UNKNOWN
@@ -238,7 +252,7 @@ class LibManga : ConfigurableSource, HttpSource() {
 
         chapter.name = element.select("div.chapter-item__name").first().text()
         chapter.date_upload = SimpleDateFormat("dd.MM.yyyy", Locale.US)
-            .parse(element.select("div.chapter-item__date").text()).time
+            .parse(element.select("div.chapter-item__date").text())?.time ?: 0L
         return chapter
     }
 
@@ -255,8 +269,9 @@ class LibManga : ConfigurableSource, HttpSource() {
             .select("script:containsData(window.__info)")
             .first()
             .html()
+            .split("window.__info = ")
+            .last()
             .trim()
-            .removePrefix("window.__info = ")
             .split(";")
             .first()
 
@@ -278,12 +293,11 @@ class LibManga : ConfigurableSource, HttpSource() {
             .removeSuffix(";")
 
         val pagesJson = jsonParser.parse(pagesArr).array
-
         val pages = mutableListOf<Page>()
+
         pagesJson.forEach { page ->
             pages.add(Page(page["p"].int, "", imageServerUrl + imgUrl + page["u"].string))
         }
-
         return pages
     }
 
@@ -313,7 +327,7 @@ class LibManga : ConfigurableSource, HttpSource() {
                 }
                 is GenreList -> filter.state.forEach { genre ->
                     if (genre.state != Filter.TriState.STATE_IGNORE) {
-                        url.addQueryParameter(if (genre.isIncluded()) "includeGenres[]" else "excludeGenres[]", genre.id)
+                        url.addQueryParameter(if (genre.isIncluded()) "genres[include][]" else "genres[exclude][]", genre.id)
                     }
                 }
                 is OrderBy -> {
@@ -339,7 +353,8 @@ class LibManga : ConfigurableSource, HttpSource() {
 
             // +200ms
             val popup = client.newCall(
-                GET("$baseUrl/search?query=$searchRequest", popupSearchHeaders))
+                GET("$baseUrl/search?query=$searchRequest", popupSearchHeaders)
+            )
                 .execute().body()!!.string()
 
             val jsonList = jsonParser.parse(popup).array
@@ -350,9 +365,11 @@ class LibManga : ConfigurableSource, HttpSource() {
         val searchedMangas = popularMangaParse(response)
 
         // Filtered out what find in popup search
-        mangas.addAll(searchedMangas.mangas.filter { search ->
-            mangas.find { search.title == it.title } == null
-        })
+        mangas.addAll(
+            searchedMangas.mangas.filter { search ->
+                mangas.find { search.title == it.title } == null
+            }
+        )
 
         return MangasPage(mangas, searchedMangas.hasNextPage)
     }
@@ -370,9 +387,11 @@ class LibManga : ConfigurableSource, HttpSource() {
         OrderBy()
     )
 
-    private class OrderBy : Filter.Sort("Сортировка",
+    private class OrderBy : Filter.Sort(
+        "Сортировка",
         arrayOf("Рейтинг", "Имя", "Просмотры", "Дата", "Кол-во глав"),
-        Selection(0, false))
+        Selection(0, false)
+    )
 
     /*
     * Use console

@@ -6,7 +6,6 @@ import android.support.v7.preference.EditTextPreference
 import android.support.v7.preference.PreferenceScreen
 import android.widget.Toast
 import com.github.salomonbrys.kotson.get
-import com.google.gson.JsonParser
 import eu.kanade.tachiyomi.annotations.Nsfw
 import eu.kanade.tachiyomi.extension.BuildConfig
 import eu.kanade.tachiyomi.network.GET
@@ -19,7 +18,6 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import okhttp3.Request
 import okhttp3.Response
-import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.Injekt
@@ -27,7 +25,6 @@ import uy.kohesive.injekt.api.get
 
 class FoolSlideFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
-        JaiminisBox(),
         SenseScans(),
         KireiCake(),
         SilentSky(),
@@ -62,29 +59,13 @@ class FoolSlideFactory : SourceFactory {
         Customizable(),
         TortugaCeviri(),
         Rama(),
-        Mabushimajo()
+        Mabushimajo(),
+        EdensZero(),
+        MenudoFansub()
     )
 }
 
-class JaiminisBox : FoolSlide("Jaimini's Box", "https://jaiminisbox.com", "en", "/reader") {
-    private val slugRegex = "(?:/read/)([\\w\\d-]+?)(?:/)".toRegex()
-    override fun pageListRequest(chapter: SChapter): Request {
-        val (slug) = slugRegex.find(chapter.url)!!.destructured
-        var (major, minor) = chapter.chapter_number.toString().split(".")
-        if (major == "-1") major = "0" // Some oneshots don't have a chapter
-        return GET("$baseUrl$urlModifier/api/reader/chapter?comic_stub=$slug&chapter=$major&subchapter=$minor")
-    }
-
-    override fun pageListParse(document: Document): List<Page> {
-        val pagesJson = JSONObject(document.body().ownText())
-        val json = JsonParser().parse(pagesJson.getString("pages")).asJsonArray
-        val pages = ArrayList<Page>()
-        json.forEach {
-            pages.add(Page(pages.size, "", JsonParser().parse(it.toString())["url"].asString))
-        }
-        return pages
-    }
-}
+class MenudoFansub : FoolSlide("Menudo-Fansub", "http://www.menudo-fansub.com", "es", "/slide")
 
 class TheCatScans : FoolSlide("The Cat Scans", "https://reader2.thecatscans.com/", "en")
 
@@ -291,3 +272,5 @@ class TortugaCeviri : FoolSlide("Tortuga Ceviri", "http://tortuga-ceviri.com", "
 class Rama : FoolSlide("Rama", "https://www.ramareader.it", "it", "/read")
 
 class Mabushimajo : FoolSlide("Mabushimajo", "http://mabushimajo.com", "tr", "/onlineokuma")
+
+class EdensZero : FoolSlide("Edens Zero and Hero's", "https://readedenszero.com", "en", "/reader")

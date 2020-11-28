@@ -1,5 +1,6 @@
 package eu.kanade.tachiyomi.extension.all.emerald
 
+import com.squareup.duktape.Duktape
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -7,14 +8,15 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import java.util.Calendar
-import java.util.concurrent.TimeUnit
 import okhttp3.HttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import org.json.JSONArray
 import org.json.JSONObject
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 open class Emerald(
     override val name: String,
@@ -34,7 +36,7 @@ open class Emerald(
         return GET("$baseUrl/browse?langs=$Mtlang&sort=update&page=$page")
     }
 
-    override fun latestUpdatesSelector() = "div#series-list div.col-24"
+    override fun latestUpdatesSelector() = "div#series-list div.col"
 
     override fun latestUpdatesFromElement(element: Element): SManga {
         val manga = SManga.create()
@@ -46,7 +48,7 @@ open class Emerald(
         return manga
     }
 
-    override fun latestUpdatesNextPageSelector() = "div.browse-pager:contains(order) a.page-link:contains(»)"
+    override fun latestUpdatesNextPageSelector() = "div#mainer .pagination .page-item:not(.disabled) a.page-link:contains(»)"
 
     override fun popularMangaRequest(page: Int): Request {
         return GET("$baseUrl/browse?langs=$Mtlang&sort=views_w&page=$page")
@@ -76,8 +78,11 @@ open class Emerald(
                         }
                     }
                     if (styleToInclude.isNotEmpty()) {
-                        url.addQueryParameter("styles", styleToInclude
-                            .joinToString(","))
+                        url.addQueryParameter(
+                            "styles",
+                            styleToInclude
+                                .joinToString(",")
+                        )
                     }
                 }
                 is DemographicFilter -> {
@@ -88,8 +93,11 @@ open class Emerald(
                         }
                     }
                     if (demographicToInclude.isNotEmpty()) {
-                        url.addQueryParameter("demogs", demographicToInclude
-                            .joinToString(","))
+                        url.addQueryParameter(
+                            "demogs",
+                            demographicToInclude
+                                .joinToString(",")
+                        )
                     }
                 }
                 is StatusFilter -> {
@@ -110,8 +118,11 @@ open class Emerald(
                         }
                     }
                     if (genreToInclude.isNotEmpty()) {
-                        url.addQueryParameter("genres", genreToInclude
-                            .joinToString(","))
+                        url.addQueryParameter(
+                            "genres",
+                            genreToInclude
+                                .joinToString(",")
+                        )
                     }
                 }
                 is StarFilter -> {
@@ -150,19 +161,21 @@ open class Emerald(
     }
 
     override fun mangaDetailsParse(document: Document): SManga {
-        val infoElement = document.select("div#series-page div.container")
+        val infoElement = document.select("div#mainer div.container-fluid")
         val manga = SManga.create()
         val genres = mutableListOf<String>()
         val status = infoElement.select("div.attr-item:contains(status) span").text()
-        infoElement.select("div.attr-item:contains(genres) span").text().split(" / "
-            .toRegex()).forEach { element ->
+        infoElement.select("div.attr-item:contains(genres) span").text().split(
+            " / "
+                .toRegex()
+        ).forEach { element ->
             genres.add(element)
         }
         manga.title = infoElement.select("h3").text()
         manga.author = infoElement.select("div.attr-item:contains(author) a:first-child").text()
         manga.artist = infoElement.select("div.attr-item:contains(author) a:last-child").text()
         manga.status = parseStatus(status)
-        manga.genre = genres.joinToString(", ")
+        manga.genre = infoElement.select(".attr-item b:contains(genres) + span ").joinToString { it.text() }
         manga.description = infoElement.select("h5:contains(summary) + pre").text()
         manga.thumbnail_url = document.select("div.attr-cover img")
             .attr("abs:src")
@@ -254,18 +267,58 @@ open class Emerald(
 
     override fun pageListParse(document: Document): List<Page> {
         val pages = mutableListOf<Page>()
-        val script = document.select("script").html()
-            .substringAfter("var images = ").substringBefore(";")
-        val imgJson = JSONObject(script)
-        val imgNames = imgJson.names()
 
-        for (i in 0 until imgNames.length()) {
-            val imgKey = imgNames.getString(i)
-            val imgUrl = imgJson.getString(imgKey)
-            pages.add(Page(i, "", imgUrl))
+        val script = document.select("script").html()
+
+        if (script.contains("var images =")) {
+            val imgJson = JSONObject(script.substringAfter("var images = ").substringBefore(";"))
+            val imgNames = imgJson.names()
+
+            if (imgNames != null) {
+                for (i in 0 until imgNames.length()) {
+                    val imgKey = imgNames.getString(i)
+                    val imgUrl = imgJson.getString(imgKey)
+                    pages.add(Page(i, "", imgUrl))
+                }
+            }
+        } else if (script.contains("const server =")) { // bato.to
+            val duktape = Duktape.create()
+            val encryptedServer = script.substringAfter("const server = ").substringBefore(";")
+            val batojs = duktape.evaluate(script.substringAfter("const batojs = ").substringBefore(";")).toString()
+            val decryptScript = cryptoJS + "CryptoJS.AES.decrypt($encryptedServer, \"$batojs\").toString(CryptoJS.enc.Utf8);"
+            val server = duktape.evaluate(decryptScript).toString().replace("\"", "")
+            duktape.close()
+
+            val imgArray = JSONArray(script.substringAfter("const images = ").substringBefore(";"))
+            if (imgArray != null) {
+                if (script.contains("bato.to/images")) {
+                    for (i in 0 until imgArray.length()) {
+                        val imgUrl = imgArray.get(i)
+                        pages.add(Page(i, "", "$imgUrl"))
+                    }
+                } else {
+                    for (i in 0 until imgArray.length()) {
+                        val imgUrl = imgArray.get(i)
+                        if (server.startsWith("http"))
+                            pages.add(Page(i, "", "${server}$imgUrl"))
+                        else
+                            pages.add(Page(i, "", "https:${server}$imgUrl"))
+
+                    }
+                }
+            }
         }
 
         return pages
+    }
+
+    private val cryptoJS by lazy {
+        client.newCall(
+            GET(
+                "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js",
+                headers
+            )
+        ).execute().body()!!.string()
     }
 
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
@@ -276,40 +329,49 @@ open class Emerald(
     private class GenreFilter(genres: List<Tag>) : Filter.Group<Tag>("Genres", genres)
     private class StatusFilter : Filter.TriState("Completed")
 
-    private class StarFilter : UriPartFilter("Stars", arrayOf(
-        Pair("<select>", ""),
-        Pair("5 Stars", "5"),
-        Pair("4 Stars", "4"),
-        Pair("3 Stars", "3"),
-        Pair("2 Stars", "2"),
-        Pair("1 Stars", "1")
-    ))
+    private class StarFilter : UriPartFilter(
+        "Stars",
+        arrayOf(
+            Pair("<select>", ""),
+            Pair("5 Stars", "5"),
+            Pair("4 Stars", "4"),
+            Pair("3 Stars", "3"),
+            Pair("2 Stars", "2"),
+            Pair("1 Stars", "1")
+        )
+    )
 
-    private class ChapterFilter : UriPartFilter("Chapters", arrayOf(
-        Pair("<select>", ""),
-        Pair("1 ~ 9", "1-9"),
-        Pair("10 ~ 29", "10-29"),
-        Pair("30 ~ 99", "30-99"),
-        Pair("100 ~ 199", "100-199"),
-        Pair("200+", "200"),
-        Pair("100+", "100"),
-        Pair("50+", "50"),
-        Pair("10+", "10"),
-        Pair("1+", "1")
-    ))
+    private class ChapterFilter : UriPartFilter(
+        "Chapters",
+        arrayOf(
+            Pair("<select>", ""),
+            Pair("1 ~ 9", "1-9"),
+            Pair("10 ~ 29", "10-29"),
+            Pair("30 ~ 99", "30-99"),
+            Pair("100 ~ 199", "100-199"),
+            Pair("200+", "200"),
+            Pair("100+", "100"),
+            Pair("50+", "50"),
+            Pair("10+", "10"),
+            Pair("1+", "1")
+        )
+    )
 
-    private class SortBy : UriPartFilter("Sorts By", arrayOf(
-        Pair("<select>", ""),
-        Pair("Totally", "views_t"),
-        Pair("365 days", "views_y"),
-        Pair("30 days", "views_m"),
-        Pair("7 days", "views_w"),
-        Pair("24 hours", "views_d"),
-        Pair("60 minutes", "views_h"),
-        Pair("A-Z", "title"),
-        Pair("Update time", "update"),
-        Pair("Add time", "create")
-    ))
+    private class SortBy : UriPartFilter(
+        "Sorts By",
+        arrayOf(
+            Pair("<select>", ""),
+            Pair("Totally", "views_t"),
+            Pair("365 days", "views_y"),
+            Pair("30 days", "views_m"),
+            Pair("7 days", "views_w"),
+            Pair("24 hours", "views_d"),
+            Pair("60 minutes", "views_h"),
+            Pair("A-Z", "title"),
+            Pair("Update time", "update"),
+            Pair("Add time", "create")
+        )
+    )
 
     override fun getFilterList() = FilterList(
         Filter.Header("NOTE: Ignored if using text search!"),

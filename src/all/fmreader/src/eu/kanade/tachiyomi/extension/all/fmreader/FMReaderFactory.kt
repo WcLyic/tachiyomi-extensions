@@ -11,7 +11,6 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
-import java.net.URLEncoder
 import okhttp3.FormBody
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -20,6 +19,7 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import java.net.URLEncoder
 
 class FMReaderFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
@@ -242,9 +242,11 @@ class SayTruyen : FMReader("Say Truyen", "https://saytruyen.com", "vi") {
     }
     override fun chapterListParse(response: Response): List<SChapter> {
         return response.asJsoup().let { document ->
-            document.select(chapterListSelector()).map { chapterFromElement(it).apply {
-                scanlator = document.select("div.row li:has(b:contains(Nhóm dịch)) small").text()
-            } }
+            document.select(chapterListSelector()).map {
+                chapterFromElement(it).apply {
+                    scanlator = document.select("div.row li:has(b:contains(Nhóm dịch)) small").text()
+                }
+            }
         }
     }
     override fun pageListParse(document: Document): List<Page> = super.pageListParse(document).onEach { it.imageUrl!!.trim() }
@@ -253,7 +255,7 @@ class SayTruyen : FMReader("Say Truyen", "https://saytruyen.com", "vi") {
 class EpikManga : FMReader("Epik Manga", "https://www.epikmanga.com", "tr") {
     override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/seri-listesi?sorting=views&sorting-type=DESC&Sayfa=$page", headers)
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/seri-listesi?sorting=lastUpdate&sorting-type=DESC&Sayfa=$page", headers)
-    override fun popularMangaNextPageSelector() = "ul.pagination li.active + li:not(.disabled)" 
+    override fun popularMangaNextPageSelector() = "ul.pagination li.active + li:not(.disabled)"
 
     override val headerSelector = "h4"
 

@@ -8,13 +8,13 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import java.util.Calendar
-import java.util.concurrent.TimeUnit
 import okhttp3.FormBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.util.Calendar
+import java.util.concurrent.TimeUnit
 
 class ReadM : ParsedHttpSource() {
 
@@ -95,6 +95,14 @@ class ReadM : ParsedHttpSource() {
         artist = document.select("span#last_episode a").text().trim()
         description = document.select("div.series-summary-wrapper p").text().trim()
         genre = document.select("div.series-summary-wrapper div.item a").joinToString(", ") { it.text().trim() }
+        status = parseStatus(document.select("div.series-genres .series-status").firstOrNull()?.ownText())
+    }
+
+    protected fun parseStatus(element: String?): Int = when {
+        element == null -> SManga.UNKNOWN
+        listOf("ongoing").any { it.contains(element, ignoreCase = true) } -> SManga.ONGOING
+        listOf("completed").any { it.contains(element, ignoreCase = true) } -> SManga.COMPLETED
+        else -> SManga.UNKNOWN
     }
 
     // Chapters
