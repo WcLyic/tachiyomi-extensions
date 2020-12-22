@@ -42,6 +42,9 @@ for APK in ${APKS[@]}; do
 
 done | jq -sr '[.[]]' > index.json
 
+# Alternate minified copy
+jq -c '.' < index.json > index.min.json
+
 # Alternate gzipped copy
 gzip -c index.json > index.json.gz
 

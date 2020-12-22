@@ -20,7 +20,7 @@ class WebtoonsFactory : SourceFactory {
         WebtoonsTranslate("zh", "CMN", " (Simplified)"),
         WebtoonsTranslate("zh", "CMT", " (Traditional)"),
         WebtoonsTranslate("th", "THA"),
-        WebtoonsTranslate("in", "IND"),
+        WebtoonsTranslate("id", "IND"),
         WebtoonsTranslate("fr", "FRA"),
         WebtoonsTranslate("vi", "VIE"),
         WebtoonsTranslate("ru", "RUS"),
@@ -52,7 +52,7 @@ class WebtoonsFactory : SourceFactory {
 
 class WebtoonsEnglish : WebtoonsDefault("en")
 
-class WebtoonsIndonesian : WebtoonsDefault("in", "id") {
+class WebtoonsIndonesian : WebtoonsDefault("id") {
     override val name: String = "Webtoons.com (Indonesian)"
 
     // Android seems to be unable to parse Indonesian dates; we'll use a short hard-coded table

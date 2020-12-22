@@ -56,6 +56,7 @@ class LibManga : ConfigurableSource, HttpSource() {
     override fun headersBuilder() = Headers.Builder().apply {
         add("User-Agent", "Mozilla/5.0 (Windows NT 6.3; WOW64)")
         add("Accept", "image/webp,*/*;q=0.8")
+        add("Referer", baseUrl)
     }
 
     private val jsonParser = JsonParser()
@@ -67,7 +68,7 @@ class LibManga : ConfigurableSource, HttpSource() {
     private val servers = mapOf(
         "secondary" to "https://img2.emanga.ru",
         "fourth" to "https://img4.imgslib.ru",
-        "compress" to "https://img3.cdnlib.org",
+        "compress" to "https://img3.yaoilib.org",
     )
 
     override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
@@ -110,7 +111,7 @@ class LibManga : ConfigurableSource, HttpSource() {
 
     override fun latestUpdatesRequest(page: Int) = GET(baseUrl, headers)
 
-    private val latestUpdatesSelector = "div.updates__left"
+    private val latestUpdatesSelector = "div.updates__item"
 
     override fun latestUpdatesParse(response: Response): MangasPage {
         val elements = response.asJsoup().select(latestUpdatesSelector)
@@ -121,13 +122,16 @@ class LibManga : ConfigurableSource, HttpSource() {
     }
 
     private fun latestUpdatesFromElement(element: Element): SManga {
-        val link = element.select("a").first()
-        val img = link.select("img").first()
         val manga = SManga.create()
-        manga.thumbnail_url = baseUrl + img.attr("data-src").substringAfter(baseUrl)
-            .replace("cover_thumb", "cover_250x350")
-        manga.setUrlWithoutDomain(link.attr("href"))
-        manga.title = img.attr("alt")
+        element.select("div.cover").first().let { img ->
+            manga.thumbnail_url = baseUrl + img.attr("data-src").substringAfter(baseUrl)
+                .replace("cover_thumb", "cover_250x350")
+        }
+
+        element.select("a").first().let { link ->
+            manga.setUrlWithoutDomain(link.attr("href"))
+            manga.title = element.select("h4").first().text()
+        }
         return manga
     }
 
@@ -209,10 +213,11 @@ class LibManga : ConfigurableSource, HttpSource() {
         manga.author = body.select(".info-list__row:nth-child(2) > a").text()
         manga.artist = body.select(".info-list__row:nth-child(3) > a").text()
         manga.status = when (
-            body.select(".info-list__row:has(strong:contains(Перевод))")
+            body.select(".info-list__row:has(strong:contains(перевод))")
                 .first()
-                .select("span.m-label")
+                .select("span")
                 .text()
+                .toLowerCase()
         ) {
             "продолжается" -> SManga.ONGOING
             "завершен" -> SManga.COMPLETED
@@ -296,12 +301,35 @@ class LibManga : ConfigurableSource, HttpSource() {
         val pages = mutableListOf<Page>()
 
         pagesJson.forEach { page ->
-            pages.add(Page(page["p"].int, "", imageServerUrl + imgUrl + page["u"].string))
+            pages.add(Page(page["p"].int, "", imageServerUrl + "/" + imgUrl + page["u"].string))
         }
         return pages
     }
 
     override fun imageUrlParse(response: Response): String = ""
+
+    private fun searchMangaByIdRequest(id: String): Request {
+        return GET("$baseUrl/$id", headers)
+    }
+
+    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
+        return if (query.startsWith(PREFIX_SLUG_SEARCH)) {
+            val realQuery = query.removePrefix(PREFIX_SLUG_SEARCH)
+            client.newCall(searchMangaByIdRequest(realQuery))
+                .asObservableSuccess()
+                .map { response ->
+                    val details = mangaDetailsParse(response)
+                    details.url = "/$realQuery"
+                    MangasPage(listOf(details), false)
+                }
+        } else {
+            client.newCall(searchMangaRequest(page, query, filters))
+                .asObservableSuccess()
+                .map { response ->
+                    searchMangaParse(response)
+                }
+        }
+    }
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         if (csrfToken.isEmpty()) {
@@ -477,5 +505,6 @@ class LibManga : ConfigurableSource, HttpSource() {
     companion object {
         private const val SERVER_PREF_Title = "Сервер изображений"
         private const val SERVER_PREF = "MangaLibImageServer"
+        const val PREFIX_SLUG_SEARCH = "slug:"
     }
 }

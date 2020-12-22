@@ -12,20 +12,17 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.FormBody
-import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
-import java.net.URLEncoder
 
 class FMReaderFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
         LHTranslation(),
         KissLove(),
-        ReadComicOnlineOrg(),
         HanaScan(),
         RawLH(),
         Manhwa18(),
@@ -36,7 +33,8 @@ class FMReaderFactory : SourceFactory {
         SayTruyen(),
         EpikManga(),
         ManhuaScan(),
-        ManhwaSmut()
+        ManhwaSmut(),
+        HeroScan()
     )
 }
 
@@ -49,46 +47,26 @@ class KissLove : FMReader("KissLove", "https://kisslove.net", "ja") {
     override fun pageListParse(document: Document): List<Page> = base64PageListParse(document)
 }
 
-class ReadComicOnlineOrg : FMReader("ReadComicOnline.org", "https://readcomiconline.org", "en") {
-    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
-        .addInterceptor { requestIntercept(it) }
-        .build()
-
-    private fun requestIntercept(chain: Interceptor.Chain): Response {
-        val request = chain.request()
-        val response = chain.proceed(request)
-
-        return if (response.headers("set-cookie").isNotEmpty()) {
-            val body = FormBody.Builder()
-                .add("dqh_firewall", URLEncoder.encode(request.url().toString().substringAfter(baseUrl), "utf-8"))
-                .build()
-            val cookie = response.headers("set-cookie")[0].split(" ")
-                .filter { it.contains("__cfduid") || it.contains("PHPSESSID") }
-                .joinToString("; ") { it.substringBefore(";") }
-            headers.newBuilder().add("Cookie", cookie).build()
-            client.newCall(POST(request.url().toString(), headers, body)).execute()
-        } else {
-            response
-        }
-    }
-
-    override val requestPath = "comic-list.html"
-    override fun pageListParse(document: Document): List<Page> {
-        val pages = document.select("div#divImage > select:first-of-type option").mapIndexed { i, imgPage ->
-            Page(i, imgPage.attr("value"))
-        }
-        return pages.dropLast(1) // last page is a comments page
-    }
-
-    override fun imageUrlRequest(page: Page): Request = GET(baseUrl + page.url, headers)
-    override fun imageUrlParse(document: Document): String = document.select("img.chapter-img").attr("abs:src").trim()
-    override fun getGenreList() = getComicsGenreList()
-}
-
 class HanaScan : FMReader("HanaScan (RawQQ)", "https://hanascan.com", "ja") {
     override fun popularMangaNextPageSelector() = "div.col-md-8 button"
     // Referer needs to be chapter URL
     override fun imageRequest(page: Page): Request = GET(page.imageUrl!!, headersBuilder().set("Referer", page.url).build())
+}
+
+class HeroScan : FMReader("HeroScan", "https://heroscan.com", "en") {
+    override val client: OkHttpClient = super.client.newBuilder()
+        .addInterceptor { chain ->
+            val originalRequest = chain.request()
+            chain.proceed(originalRequest).let { response ->
+                if (response.code() == 403 && originalRequest.url().host().contains("b-cdn")) {
+                    response.close()
+                    chain.proceed(originalRequest.newBuilder().removeHeader("Referer").addHeader("Referer", "https://isekaiscan.com").build())
+                } else {
+                    response
+                }
+            }
+        }
+        .build()
 }
 
 class RawLH : FMReader("RawLH", "https://loveheaven.net", "ja") {

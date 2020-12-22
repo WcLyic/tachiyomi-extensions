@@ -45,7 +45,8 @@ class TsukiMangas : HttpSource() {
         .build()
 
     override fun headersBuilder(): Headers.Builder = Headers.Builder()
-        .add("Accept", "application/json, text/plain, */*")
+        .add("Accept", ACCEPT)
+        .add("Accept-Language", ACCEPT_LANGUAGE)
         .add("User-Agent", USER_AGENT)
         .add("Referer", baseUrl)
 
@@ -64,7 +65,7 @@ class TsukiMangas : HttpSource() {
     private fun popularMangaItemParse(obj: JsonObject) = SManga.create().apply {
         title = obj["TITULO"].string
         thumbnail_url = baseUrl + "/imgs/" + obj["CAPA"].string.substringBefore("?")
-        url = "/manga/" + obj["URL"].string
+        url = "/obra/${obj["ID"].int}/${obj["URL"].string}"
     }
 
     override fun latestUpdatesRequest(page: Int): Request {
@@ -89,7 +90,7 @@ class TsukiMangas : HttpSource() {
     private fun latestMangaItemParse(obj: JsonObject) = SManga.create().apply {
         title = obj["TITULO"].string
         thumbnail_url = baseUrl + "/imgs/" + obj["CAPA"].string
-        url = "/manga/" + obj["URL"].string
+        url = "/obra/${obj["ID"].int}/${obj["URL"].string}"
     }
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
@@ -121,6 +122,7 @@ class TsukiMangas : HttpSource() {
             .addEncodedPathSegment(genreQuery)
             .addPathSegment(page.toString())
             .addEncodedPathSegment(pathQuery)
+            .addPathSegment("all")
             .toString()
 
         return GET(url, newHeaders)
@@ -134,10 +136,7 @@ class TsukiMangas : HttpSource() {
 
         val searchMangas = result.map { searchMangaItemParse(it.obj) }
 
-        val currentPage = response.request().url().toString()
-            .substringBeforeLast("/")
-            .substringAfterLast("/")
-            .toInt()
+        val currentPage = response.request().url().pathSegments()[3].toInt()
         val lastPage = result[0].obj["page"].array[0].int
         val hasNextPage = currentPage < lastPage
 
@@ -147,7 +146,7 @@ class TsukiMangas : HttpSource() {
     private fun searchMangaItemParse(obj: JsonObject) = SManga.create().apply {
         title = obj["TITULO"].string
         thumbnail_url = baseUrl + "/imgs/" + obj["CAPA"].string.substringBefore("?")
-        url = "/manga/" + obj["URL"].string
+        url = "/obra/${obj["ID"].int}/${obj["URL"].string}"
     }
 
     // Workaround to allow "Open in browser" use the real URL.
@@ -164,9 +163,9 @@ class TsukiMangas : HttpSource() {
             .set("Referer", baseUrl + manga.url)
             .build()
 
-        val mangaSlug = manga.url.substringAfterLast("/")
+        val mangaId = manga.url.substringAfter("obra/").substringBefore("/")
 
-        return GET("$baseUrl/api/mangas/$mangaSlug", newHeaders)
+        return GET("$baseUrl/api/mangas/$mangaId", newHeaders)
     }
 
     override fun mangaDetailsRequest(manga: SManga): Request {
@@ -184,7 +183,7 @@ class TsukiMangas : HttpSource() {
             title = result["TITULO"].string
             thumbnail_url = baseUrl + "/imgs/" + result["CAPA"].string.substringBefore("?")
             description = result["SINOPSE"].string
-            status = SManga.ONGOING
+            status = result["STATUS"].string.toStatus()
             author = result["AUTOR"].string
             artist = result["ARTISTA"].string
             genre = result["GENEROS"].string
@@ -194,13 +193,13 @@ class TsukiMangas : HttpSource() {
     override fun chapterListRequest(manga: SManga): Request = chapterListRequestPaginated(manga.url, 1)
 
     private fun chapterListRequestPaginated(mangaUrl: String, page: Int): Request {
-        val slug = mangaUrl.substringAfterLast("/")
+        val mangaId = mangaUrl.substringAfter("obra/").substringBefore("/")
 
         val newHeaders = headersBuilder()
             .set("Referer", baseUrl + mangaUrl)
             .build()
 
-        return GET("$baseUrl/api/capitulospag/$slug/DESC/$page", newHeaders)
+        return GET("$baseUrl/api/capitulospag/$mangaId/DESC/$page", newHeaders)
     }
 
     override fun chapterListParse(response: Response): List<SChapter> {
@@ -210,14 +209,13 @@ class TsukiMangas : HttpSource() {
             return emptyList()
 
         val mangaUrl = response.request().header("Referer")!!.substringAfter(baseUrl)
-        val mangaSlug = mangaUrl.substringAfterLast("/")
         var page = 1
 
         val chapters = mutableListOf<SChapter>()
 
         while (result.size() != 0) {
             chapters += result
-                .map { chapterListItemParse(it.obj, mangaSlug) }
+                .map { chapterListItemParse(it.obj, mangaUrl) }
                 .toMutableList()
 
             val newRequest = chapterListRequestPaginated(mangaUrl, ++page)
@@ -227,13 +225,16 @@ class TsukiMangas : HttpSource() {
         return chapters
     }
 
-    private fun chapterListItemParse(obj: JsonObject, slug: String): SChapter = SChapter.create().apply {
+    private fun chapterListItemParse(obj: JsonObject, mangaUrl: String): SChapter = SChapter.create().apply {
+        val mangaId = mangaUrl.substringAfter("obra/").substringBefore("/")
+        val mangaSlug = mangaUrl.substringAfterLast("/")
+
         name = "Cap. " + obj["NUMERO"].string +
             (if (obj["TITULO"].string.isNotEmpty()) " - " + obj["TITULO"].string else "")
         chapter_number = obj["NUMERO"].string.toFloatOrNull() ?: -1f
         scanlator = obj["scans"].array.joinToString { it.obj["NOME"].string }
-        date_upload = DATE_FORMATTER.tryParseDate(obj["DATA"].string.substringBefore("T"))
-        url = "/leitor/$slug/" + obj["NUMERO"].string
+        date_upload = obj["DATA"].string.substringBefore("T").toDate()
+        url = "/leitor/$mangaId/${obj["ID"].int}/$mangaSlug/${obj["NUMERO"].string}"
     }
 
     override fun pageListRequest(chapter: SChapter): Request {
@@ -241,14 +242,19 @@ class TsukiMangas : HttpSource() {
             .set("Referer", baseUrl + chapter.url)
             .build()
 
-        return GET("$baseUrl/api" + chapter.url, newHeaders)
+        val mangaId = chapter.url.substringAfter("leitor/").substringBefore("/")
+        val chapterId = chapter.url.substringAfter("$mangaId/").substringBefore("/")
+
+        return GET("$baseUrl/api/leitor/$mangaId/$chapterId", newHeaders)
     }
 
     override fun pageListParse(response: Response): List<Page> {
         val result = response.asJson().array
-        val chapterUrl = response.request().header("Referer")!!
 
-        return result.mapIndexed { i, page -> Page(i, chapterUrl, page.obj["IMG"].string) }
+        return result.mapIndexed { i, page ->
+            val cdnUrl = "https://cdn${page.obj["SERVIDOR"].string}.tsukimangas.com"
+            Page(i, "$baseUrl/", cdnUrl + page.obj["IMG"].string)
+        }
     }
 
     override fun fetchImageUrl(page: Page): Observable<String> = Observable.just(page.imageUrl!!)
@@ -257,7 +263,8 @@ class TsukiMangas : HttpSource() {
 
     override fun imageRequest(page: Page): Request {
         val newHeaders = headersBuilder()
-            .set("Accept", "image/webp,image/apng,image/*,*/*;q=0.8")
+            .set("Accept", ACCEPT_IMAGE)
+            .set("Accept-Language", ACCEPT_LANGUAGE)
             .set("Referer", page.url)
             .build()
 
@@ -324,19 +331,28 @@ class TsukiMangas : HttpSource() {
         Genre("Zumbi")
     )
 
-    private fun SimpleDateFormat.tryParseDate(date: String): Long {
+    private fun String.toDate(): Long {
         return try {
-            parse(date)?.time ?: 0L
+            DATE_FORMATTER.parse(this)?.time ?: 0L
         } catch (e: ParseException) {
             0L
         }
     }
 
+    private fun String.toStatus() = when {
+        contains("Ativo") -> SManga.ONGOING
+        contains("Completo") -> SManga.COMPLETED
+        else -> SManga.UNKNOWN
+    }
+
     private fun Response.asJson(): JsonElement = JSON_PARSER.parse(body()!!.string())
 
     companion object {
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
-            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/86.0.4240.111 Safari/537.36"
+        private const val ACCEPT = "application/json, text/plain, */*"
+        private const val ACCEPT_IMAGE = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
+        private const val ACCEPT_LANGUAGE = "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7,es;q=0.6,gl;q=0.5"
+        // By request of site owner. Detailed at Issue #4912 (in Portuguese).
+        private val USER_AGENT = "Tachiyomi " + System.getProperty("http.agent")
 
         private val JSON_PARSER by lazy { JsonParser() }
 

@@ -1,4 +1,5 @@
 include(":annotations")
+include(":core")
 
 include(":lib-ratelimit")
 project(":lib-ratelimit").projectDir = File("lib/ratelimit")
@@ -9,6 +10,7 @@ project(":duktape-stub").projectDir = File("lib/duktape-stub")
 include(":lib-dataimage")
 project(":lib-dataimage").projectDir = File("lib/dataimage")
 
+// Loads all extensions
 // File(rootDir, "src").eachDir { dir ->
     val dir = File(rootDir, "src/zh")
     dir.eachDir { subdir ->
@@ -17,6 +19,12 @@ project(":lib-dataimage").projectDir = File("lib/dataimage")
         project(name).projectDir = File("src/${dir.name}/${subdir.name}")
     }
 // }
+
+// Use this to load a single extension during development
+// val lang = "all"
+// val name = "mmrcms"
+// include(":${lang}-${name}")
+// project(":${lang}-${name}").projectDir = File("src/${lang}/${name}")
 
 inline fun File.eachDir(block: (File) -> Unit) {
     listFiles()?.filter { it.isDirectory }?.forEach { block(it) }

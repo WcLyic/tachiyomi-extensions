@@ -37,6 +37,7 @@ The simplest extension structure looks like this:
 ```console
 $ tree src/<lang>/<mysourcename>/
 src/<lang>/<mysourcename>/
+├── AndroidManifest.xml
 ├── build.gradle
 ├── res
 │   ├── mipmap-hdpi
@@ -59,8 +60,11 @@ src/<lang>/<mysourcename>/
                         └── <mysourcename>
                             └── <MySourceName>.kt
 
-13 directories, 8 files
+13 directories, 9 files
 ```
+
+#### AndroidManifest.xml
+A minimal [Android manifest file](https://developer.android.com/guide/topics/manifest/manifest-intro) is needed for Android to recognize a extension when it's compiled into an APK file. You can also add intent filters inside this file (see [URL intent filter](#url-intent-filter) for more information).
 
 #### build.gradle
 Make sure that your new extension's `build.gradle` file follows the following structure:
@@ -96,11 +100,11 @@ The extension's version name is generated automatically by concatenating `libVer
 
 #### Extension API
 
-Extensions rely on [extensions-lib](https://github.com/tachiyomiorg/extensions-lib), which provides some interfaces and stubs from the [app](https://github.com/inorichi/tachiyomi) for compilation purposes. The actual implementations can be found [here](https://github.com/inorichi/tachiyomi/tree/dev/app/src/main/java/eu/kanade/tachiyomi/source). Referencing the actual implementation will help with understanding extensions' call flow.
+Extensions rely on [extensions-lib](https://github.com/tachiyomiorg/extensions-lib), which provides some interfaces and stubs from the [app](https://github.com/tachiyomiorg/tachiyomi) for compilation purposes. The actual implementations can be found [here](https://github.com/tachiyomiorg/tachiyomi/tree/dev/app/src/main/java/eu/kanade/tachiyomi/source). Referencing the actual implementation will help with understanding extensions' call flow.
 
 #### Duktape stub
 
-[`duktape-stub`](https://github.com/inorichi/tachiyomi-extensions/tree/master/lib/duktape-stub) provides stubs for using Duktape functionality without pulling in the full library. Functionality is bundled into the main Tachiyomi app.
+[`duktape-stub`](https://github.com/tachiyomiorg/tachiyomi-extensions/tree/master/lib/duktape-stub) provides stubs for using Duktape functionality without pulling in the full library. Functionality is bundled into the main Tachiyomi app.
 
 ```gradle
 dependencies {
@@ -110,7 +114,7 @@ dependencies {
 
 #### Rate limiting library
 
-[`lib-ratelimit`](https://github.com/inorichi/tachiyomi-extensions/tree/master/lib/ratelimit) is a library for adding rate limiting functionality as an [OkHttp interceptor](https://square.github.io/okhttp/interceptors/).
+[`lib-ratelimit`](https://github.com/tachiyomiorg/tachiyomi-extensions/tree/master/lib/ratelimit) is a library for adding rate limiting functionality as an [OkHttp interceptor](https://square.github.io/okhttp/interceptors/).
 
 ```gradle
 dependencies {
@@ -120,7 +124,7 @@ dependencies {
 
 #### DataImage library
 
-[`lib-dataimage`](https://github.com/inorichi/tachiyomi-extensions/tree/master/lib/dataimage) is a library for handling [base 64 encoded image data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs) using an [OkHttp interceptor](https://square.github.io/okhttp/interceptors/).
+[`lib-dataimage`](https://github.com/tachiyomiorg/tachiyomi-extensions/tree/master/lib/dataimage) is a library for handling [base 64 encoded image data](https://developer.mozilla.org/en-US/docs/Web/HTTP/Basics_of_HTTP/Data_URIs) using an [OkHttp interceptor](https://square.github.io/okhttp/interceptors/).
 
 ```gradle
 dependencies {
@@ -130,7 +134,7 @@ dependencies {
 
 #### Additional dependencies
 
-You may find yourself needing additional functionality and wanting to add more dependencies to your `build.gradle` file. Since extensions are run within the main Tachiyomi app, you can make use of [its dependencies](https://github.com/inorichi/tachiyomi/blob/master/app/build.gradle).
+You may find yourself needing additional functionality and wanting to add more dependencies to your `build.gradle` file. Since extensions are run within the main Tachiyomi app, you can make use of [its dependencies](https://github.com/tachiyomiorg/tachiyomi/blob/master/app/build.gradle).
 
 For example, an extension that needs Gson could add the following:
 
@@ -144,7 +148,7 @@ dependencies {
 
 Notice that we're using `compileOnly` instead of `implementation`, since the app already contains it. You could use `implementation` instead for a new dependency, or you prefer not to rely on whatever the main app has at the expense of app size.
 
-Note that using `compileOnly` restricts you to versions that must be compatible with those used in [Tachiyomi v0.8.5+](https://github.com/inorichi/tachiyomi/blob/82141cec6e612885fef4fa70092e29e99d60adbb/app/build.gradle#L104) for proper backwards compatibility.
+Note that using `compileOnly` restricts you to versions that must be compatible with those used in [Tachiyomi v0.8.5+](https://github.com/tachiyomiorg/tachiyomi/blob/82141cec6e612885fef4fa70092e29e99d60adbb/app/build.gradle#L104) for proper backwards compatibility.
 
 ### Extension main class
 
@@ -172,15 +176,16 @@ The class which is refrenced and defined by `extClass` in `build.gradle`. This c
 
 a.k.a. the Browse source entry point in the app (invoked by tapping on the source name).
 
-- The app calls `fetchPopularManga` with `page=1`, and it returns a `MangasPage` and will continue to call it for next pages, when the user scrolls the manga list and more results must be fetched (until you pass `MangasPage.hasNextPage` as `false` which marks the end of the found manga list).
-- While passing magnas here you should at least set `url`, `title` and `thumbnail_url`.
-    - If `thumbnail_url` is not set, `fetchMangaDetails` will be **immediately** called.
+- The app calls `fetchPopularManga` which should return a `MangasPage` containing the first batch of found `SManga` entries.
+    - This method supports pagination. When user scrolls the manga list and more results must be fetched, the app calls it again with increasing `page` values(starting with `page=1`). This continues until `MangasPage.hasNextPage` is passed as `true` and `MangasPage.mangas` is not empty.
+- To show the list properly, the app needs `url`, `title` and `thumbnail_url`. You must set them here. The rest of the fields could be filled later.(refer to Manga Details below)
+    - You should set `thumbnail_url` if is available, if not, `fetchMangaDetails` will be **immediately** called.(this will increase network calls heavily and should be avoided)
 
 #### Latest Manga
 
 a.k.a. the Latest source entry point in the app (invoked by tapping on the "Latest" button beside the source name).
 
-- Used if `supportsLatest` is `true` for a source
+- Enabled if `supportsLatest` is `true` for a source
 - Similar to popular manga, but should be fetching the latest entries from a source.
 
 #### Manga Search
@@ -192,16 +197,20 @@ a.k.a. the Latest source entry point in the app (invoked by tapping on the "Late
 #### Manga Details
 
 - When user taps on a manga, `fetchMangaDetails` and `fetchChapterList` will be called and the results will be cached.
+    - A `SManga` entry is identified by it's `url`.
 - `fetchMangaDetails` is called to update a manga's details from when it was initialized earlier.
     - During a backup, only `url` and `title` are stored. To restore the rest of the manga data, the app calls `fetchMangaDetails`, so all fields should be (re)filled in if possible.
     - `SManga.initialized` tells the app if it should call `fetchMangaDetails`. If you are overriding `fetchMangaDetails`, make sure to pass it as `true`.
+    - If a `SManga` is cached `fetchMangaDetails` will be only called when the user does a manual update(Swipe-to-Refresh).
 - `fetchChapterList` is called to display the chapter list.
-    - The list should be sorted descending by date/chapter number.
+    - The list should be sorted descending by the source order.
     - If `Page.imageUrl`s are available immediately, you should pass them here. Otherwise, you should set `page.url` to a page that contains them and override `imageUrlParse` to fill those `imageUrl`s.
 
 #### Chapter
 
 - After a chapter list for the manga is fetched and the app is going to cache the data, `prepareNewChapter` will be called.
+- `SChapter.date_upload` is the [UNIX Epoch time](https://en.wikipedia.org/wiki/Unix_time) **expressed in miliseconds**.
+    - If you don't pass `SChapter.date_upload`, the user won't get notifications for new chapters. refer to [this issue](https://github.com/tachiyomiorg/tachiyomi/issues/2089) for more info. `System.currentTimeMillis()` works as a substitute when real data is not available.
 
 #### Chapter Pages
 
@@ -215,6 +224,14 @@ a.k.a. the Latest source entry point in the app (invoked by tapping on the "Late
 - You probably will find `getUrlWithoutDomain` useful when parsing the target source URLs.
 - If possible try to stick to the general workflow from `HttpSource`/`ParsedHttpSource`; breaking them may cause you more headache than necessary.
 - By implementing `ConfigurableSource` you can add settings to your source, which is backed by [`SharedPreferences`](https://developer.android.com/reference/android/content/SharedPreferences).
+
+### Advanced Extension features
+
+#### URL intent filter
+
+Extensions can define URL intent filters by defining it inside a custom `AndroidManifest.xml` file.
+For an example, refer to [the NHentai module's `AndroidManifest.xml` file](https://github.com/tachiyomiorg/tachiyomi-extensions/blob/master/src/all/nhentai/AndroidManifest.xml) and [its corresponding `NHUrlActivity` handler](https://github.com/tachiyomiorg/tachiyomi-extensions/blob/master/src/all/nhentai/src/eu/kanade/tachiyomi/extension/all/nhentai/NHUrlActivity.kt).
+
 
 ## Running
 
