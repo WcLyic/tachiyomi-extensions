@@ -3,7 +3,7 @@ name: CI
 on:
   push:
     branches:
-      - my
+      - dev
   pull_request:
 
 jobs:
@@ -33,7 +33,7 @@ jobs:
       - name: Checkout master branch
         uses: actions/checkout@v2
         with:
-          ref: my
+          ref: dev
           path: master
 
       - name: Set up JDK 1.8
@@ -77,7 +77,7 @@ jobs:
         if: github.event_name == 'push' && github.repository == 'WcLyic/tachiyomi-extensions'
         uses: actions/checkout@v2
         with:
-          ref: repo
+          ref: repo-dev
           path: repo
 
       - name: Deploy repo
