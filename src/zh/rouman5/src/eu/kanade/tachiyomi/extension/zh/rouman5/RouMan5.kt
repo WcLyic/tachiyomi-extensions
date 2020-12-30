@@ -142,7 +142,7 @@ class RouMan5 : HttpSource() {
 
         val ret = ArrayList<Page>(pageArray.length())
         for (i in 0 until pageArray.length()) {
-            ret.add(Page(i, "", pageArray.getString(i)))
+            ret.add(Page(i, "", pageArray.getJSONObject(i).getString("src")))
         }
 
         return ret
