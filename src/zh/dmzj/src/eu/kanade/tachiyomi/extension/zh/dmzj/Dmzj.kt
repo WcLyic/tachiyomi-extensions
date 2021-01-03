@@ -78,7 +78,7 @@ class Dmzj : HttpSource() {
                         "连载中" -> SManga.ONGOING
                         else -> SManga.UNKNOWN
                     }
-                    url = "/comic/comic_$cid.json?version="
+                    url = "/comic/comic_$cid.json"
                 }
             )
         }
