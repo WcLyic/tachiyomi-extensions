@@ -38,10 +38,10 @@
   {
     "name": "Tachiyomi: Dmzj",
     "pkg": "eu.kanade.tachiyomi.extension.zh.dmzj",
-    "apk": "tachiyomi-zh.dmzj-v1.2.12.apk",
+    "apk": "tachiyomi-zh.dmzj-v1.2.13.apk",
     "lang": "zh",
-    "code": 12,
-    "version": "1.2.12",
+    "code": 13,
+    "version": "1.2.13",
     "nsfw": 0
   },
   {
@@ -65,10 +65,10 @@
   {
     "name": "Tachiyomi: Jinmantiantang",
     "pkg": "eu.kanade.tachiyomi.extension.zh.jinmantiantang",
-    "apk": "tachiyomi-zh.jinmantiantang-v1.2.9.apk",
+    "apk": "tachiyomi-zh.jinmantiantang-v1.2.11.apk",
     "lang": "zh",
-    "code": 9,
-    "version": "1.2.9",
+    "code": 11,
+    "version": "1.2.11",
     "nsfw": 1
   },
   {
@@ -119,10 +119,10 @@
   {
     "name": "Tachiyomi: CoCoManhua (OhManhua)",
     "pkg": "eu.kanade.tachiyomi.extension.zh.onemanhua",
-    "apk": "tachiyomi-zh.onemanhua-v1.2.6.apk",
+    "apk": "tachiyomi-zh.onemanhua-v1.2.7.apk",
     "lang": "zh",
-    "code": 6,
-    "version": "1.2.6",
+    "code": 7,
+    "version": "1.2.7",
     "nsfw": 0
   },
   {
