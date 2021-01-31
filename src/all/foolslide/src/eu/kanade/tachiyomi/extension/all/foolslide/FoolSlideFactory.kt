@@ -60,7 +60,6 @@ class FoolSlideFactory : SourceFactory {
         TortugaCeviri(),
         Rama(),
         Mabushimajo(),
-        EdensZero(),
         MenudoFansub()
     )
 }
@@ -187,7 +186,7 @@ class HNIScantradEN : FoolSlide("HNI-Scantrad", "https://hni-scantrad.com", "en"
     }
 }
 
-class PhoenixScans : FoolSlide("The Phoenix Scans", "https://www.phantomreader.com", "it", "/reader")
+class PhoenixScans : FoolSlide("The Phoenix Scans", "https://www.phoenixscans.com", "it", "/reader")
 
 class GTO : FoolSlide("GTO The Great Site", "https://www.gtothegreatsite.net", "it", "/reader")
 
@@ -272,5 +271,3 @@ class TortugaCeviri : FoolSlide("Tortuga Ceviri", "http://tortuga-ceviri.com", "
 class Rama : FoolSlide("Rama", "https://www.ramareader.it", "it", "/read")
 
 class Mabushimajo : FoolSlide("Mabushimajo", "http://mabushimajo.com", "tr", "/onlineokuma")
-
-class EdensZero : FoolSlide("Edens Zero and Hero's", "https://readedenszero.com", "en", "/reader")

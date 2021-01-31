@@ -50,6 +50,7 @@ class MadaraFactory : SourceFactory {
         CatOnHeadTranslations(),
         CatTranslator(),
         ChibiManga(),
+        CloverManga(),
         ComicKiba(),
         ComicsValley(),
         CopyPasteScan(),
@@ -61,6 +62,7 @@ class MadaraFactory : SourceFactory {
         DisasterScans(),
         DoujinHentai(),
         DoujinYosh(),
+        DreamManga(),
         DropeScan(),
         EinherjarScan(),
         FdmScan(),
@@ -71,6 +73,7 @@ class MadaraFactory : SourceFactory {
         GeceninLordu(),
         GoldenManga(),
         GrazeScans(),
+        GourmetScans(),
         GuncelManga(),
         HeroManhua(),
         HerozScanlation(),
@@ -82,6 +85,7 @@ class MadaraFactory : SourceFactory {
         IchirinNoHanaYuri(),
         ImmortalUpdates(),
         IsekaiScanCom(),
+        ItsYourRightManhua(),
         JJutsuScans(),
         JustForFun(),
         KingzManga(),
@@ -101,7 +105,9 @@ class MadaraFactory : SourceFactory {
         MangaArabOnline(),
         MangaArabTeam(),
         MangaBaz(),
+        MangaBin(),
         MangaBob(),
+        MangaChill(),
         MangaClash(),
         MangaCrimson(),
         MangaCultivator(),
@@ -212,6 +218,7 @@ class MadaraFactory : SourceFactory {
         TurkceManga(),
         TwilightScans(),
         UyuyanBalik(),
+        VanguardBun(),
         Voidscans(),
         Wakascan(),
         WarQueenScan(),
@@ -351,21 +358,7 @@ class MangaClash : Madara(
     dateFormat = SimpleDateFormat("MM/dd/yy", Locale.US)
 )
 
-class TritiniaScans : Madara("TritiniaScans", "https://tritiniaman.ga", "en") {
-    // site is a bit broken
-    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/manga/index_m_orderby=views.html", headers)
-    override fun popularMangaNextPageSelector(): String? = null
-    override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/manga/index_m_orderby=latest.html", headers)
-    override fun latestUpdatesNextPageSelector(): String? = null
-    private val imageRegex = Regex(""""(http[^"]*)"""")
-    override fun pageListParse(document: Document): List<Page> {
-        val script = document.select("#chapter_preloaded_images").firstOrNull()?.data()
-            ?: throw Exception("chapter_preloaded_images not found")
-        return imageRegex.findAll(script).asIterable().mapIndexed { i, mr ->
-            Page(i, "", mr.groupValues[1].replace("\\", ""))
-        }
-    }
-}
+class TritiniaScans : Madara("TritiniaScans", "https://tritinia.com", "en")
 
 class CopyPasteScan : Madara("CopyPasteScan", "https://copypastescan.xyz", "es")
 
@@ -1528,3 +1521,17 @@ class SekteDoujin : Madara("Sekte Doujin", "https://sektedoujin.xyz", "id")
 class MundoWuxia : Madara("Mundo Wuxia", "https://mundowuxia.com", "es", SimpleDateFormat("MMMM dd, yyyy", Locale("es")))
 
 class WorldRomanceTranslation : Madara("World Romance Translation", "https://wrt.my.id/", "id", SimpleDateFormat("dd MMMM yyyy", Locale("id")))
+
+class CloverManga : Madara("Clover Manga", "https://clover-manga.com/", "tr", SimpleDateFormat("MMMM dd, yyyy", Locale("tr")))
+
+class VanguardBun : Madara("Vanguard Bun", "https://vanguardbun.com/", "en")
+
+class MangaBin : Madara("Manga Bin", "https://mangabin.com/", "en")
+
+class MangaChill : Madara("Manga Chill", "https://mangachill.com/", "en")
+
+class DreamManga : Madara("Dream Manga", "https://dreammanga.com/", "en")
+
+class GourmetScans : Madara("Gourmet Scans", "https://gourmetscans.net/", "en")
+
+class ItsYourRightManhua : Madara("Its Your Right Manhua", "https://itsyourightmanhua.com/", "en")
