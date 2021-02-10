@@ -128,7 +128,7 @@ class Manhuadui : ParsedHttpSource() {
                 chapter.name = "$prefix: ${chapter.name}"
                 chapters.add(chapter)
             }
-            ret.addAll(chapters.asReversed())
+            ret.addAll(chapters)
         }
         return ret
     }
