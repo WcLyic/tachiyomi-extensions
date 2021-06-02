@@ -147,6 +147,9 @@ class Dmzj : ConfigurableSource, HttpSource() {
             .addQueryParameter("channel", "android")
             .addQueryParameter("version", "3.0.0")
             .addQueryParameter("timestamp", rightNow.toInt().toString())
+            .addQueryParameter("uid", "103482703")
+            .addQueryParameter("token", "2f4e924678f9b362081bcf49219dc4d8")
+            .addQueryParameter("sign", "EDA88B29C9B58F31B5722E6EDDD6486C")
     }
 
     private fun decryptProtobufData(rawData: String): ByteArray {
@@ -322,16 +325,19 @@ class Dmzj : ConfigurableSource, HttpSource() {
         if (response.request.url.toString().startsWith(v4apiUrl)) {
             val pb = ProtoBuf.decodeFromByteArray<ComicDetailResponse>(decryptProtobufData(responseBody))
             val mangaPBData = pb.Data
-            val chapterPBData = mangaPBData.Chapters[0]
-            for (i in chapterPBData.Data.indices) {
-                val chapter = chapterPBData.Data[i]
-                ret.add(
-                    SChapter.create().apply {
-                        name = chapter.ChapterTitle
-                        date_upload = chapter.Updatetime * 1000
-                        url = "${mangaPBData.Id}/${chapter.ChapterId}"
-                    }
-                )
+            for (j in mangaPBData.Chapters.indices) {
+                val chapterPBData = mangaPBData.Chapters[j]
+                val prefix = chapterPBData.Title
+                for (i in chapterPBData.Data.indices) {
+                    val chapter = chapterPBData.Data[i]
+                    ret.add(
+                        SChapter.create().apply {
+                            name = "$prefix: ${chapter.ChapterTitle}"
+                            date_upload = chapter.Updatetime * 1000
+                            url = "${mangaPBData.Id}/${chapter.ChapterId}"
+                        }
+                    )
+                }
             }
         } else {
             // get chapter info from old api
