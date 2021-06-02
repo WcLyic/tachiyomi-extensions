@@ -325,6 +325,7 @@ class Dmzj : ConfigurableSource, HttpSource() {
         if (response.request.url.toString().startsWith(v4apiUrl)) {
             val pb = ProtoBuf.decodeFromByteArray<ComicDetailResponse>(decryptProtobufData(responseBody))
             val mangaPBData = pb.Data
+            val testChapter = mangaPBData.Chapters[0]
             for (j in mangaPBData.Chapters.indices) {
                 val chapterPBData = mangaPBData.Chapters[j]
                 val prefix = chapterPBData.Title
