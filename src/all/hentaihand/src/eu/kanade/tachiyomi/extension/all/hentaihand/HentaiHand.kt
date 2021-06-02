@@ -1,6 +1,10 @@
 package eu.kanade.tachiyomi.extension.all.hentaihand
 
 import android.annotation.SuppressLint
+import android.app.Application
+import android.content.SharedPreferences
+import android.text.InputType
+import android.widget.Toast
 import com.github.salomonbrys.kotson.fromJson
 import com.github.salomonbrys.kotson.get
 import com.github.salomonbrys.kotson.nullObj
@@ -10,7 +14,9 @@ import com.google.gson.JsonArray
 import com.google.gson.JsonObject
 import eu.kanade.tachiyomi.annotations.Nsfw
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -18,27 +24,40 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
+import okhttp3.RequestBody
 import okhttp3.Response
+import org.json.JSONException
+import org.json.JSONObject
 import rx.Observable
 import rx.schedulers.Schedulers
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.text.SimpleDateFormat
 
 @Nsfw
-class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
+class HentaiHand(
+    override val lang: String,
+    private val hhLangId: Int? = null,
+    extraName: String = ""
+) : ConfigurableSource, HttpSource() {
 
     override val baseUrl: String = "https://hentaihand.com"
-    override val name: String = "HentaiHand"
+    override val name: String = "HentaiHand$extraName"
     override val supportsLatest = true
 
     private val gson = Gson()
 
-    override val client: OkHttpClient = network.cloudflareClient
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+        .addInterceptor { authIntercept(it) }
+        .build()
 
     private fun parseGenericResponse(response: Response): MangasPage {
-        val data = gson.fromJson<JsonObject>(response.body()!!.string())
+        val data = gson.fromJson<JsonObject>(response.body!!.string())
         return MangasPage(
             data.getAsJsonArray("data").map {
                 SManga.create().apply {
@@ -56,7 +75,8 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
     override fun popularMangaParse(response: Response): MangasPage = parseGenericResponse(response)
 
     override fun popularMangaRequest(page: Int): Request {
-        return GET("$baseUrl/api/comics?page=$page&sort=popularity&order=desc&duration=all&languages=$hhLangId")
+        val url = "$baseUrl/api/comics?page=$page&sort=popularity&order=desc&duration=all"
+        return GET(if (hhLangId == null) url else ("$url&languages=$hhLangId"))
     }
 
     // Latest
@@ -64,7 +84,8 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
     override fun latestUpdatesParse(response: Response): MangasPage = parseGenericResponse(response)
 
     override fun latestUpdatesRequest(page: Int): Request {
-        return GET("$baseUrl/api/comics?page=$page&sort=uploaded_at&order=desc&duration=week&languages=$hhLangId")
+        val url = "$baseUrl/api/comics?page=$page&sort=uploaded_at&order=desc&duration=week"
+        return GET(if (hhLangId == null) url else ("$url&languages=$hhLangId"))
     }
 
     // Search
@@ -77,7 +98,7 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
             .asObservableSuccess()
             .subscribeOn(Schedulers.io())
             .map {
-                val data = gson.fromJson<JsonObject>(it.body()!!.string())
+                val data = gson.fromJson<JsonObject>(it.body!!.string())
                 // only the first tag will be used
                 data.getAsJsonArray("data").firstOrNull()?.let { t -> t["id"].asInt }
             }.toBlocking().first()
@@ -85,10 +106,12 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
 
-        val url = HttpUrl.parse("$baseUrl/api/comics")!!.newBuilder()
+        val url = "$baseUrl/api/comics".toHttpUrlOrNull()!!.newBuilder()
             .addQueryParameter("page", page.toString())
             .addQueryParameter("q", query)
-            .addQueryParameter("languages", hhLangId.toString())
+
+        if (hhLangId != null)
+            url.addQueryParameter("languages", hhLangId.toString())
 
         (if (filters.isEmpty()) getFilterList() else filters).forEach { filter ->
             when (filter) {
@@ -133,7 +156,7 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val data = gson.fromJson<JsonObject>(response.body()!!.string())
+        val data = gson.fromJson<JsonObject>(response.body!!.string())
         return SManga.create().apply {
 
             artist = tagArrayToString(data.getAsJsonArray("artists"))
@@ -163,7 +186,7 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
     override fun chapterListRequest(manga: SManga): Request = mangaDetailsApiRequest(manga)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val data = gson.fromJson<JsonObject>(response.body()!!.string())
+        val data = gson.fromJson<JsonObject>(response.body!!.string())
         return listOf(
             SChapter.create().apply {
                 url = "/en/comic/${data["slug"].asString}/reader/1"
@@ -182,13 +205,97 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val data = gson.fromJson<JsonObject>(response.body()!!.string())
+        val data = gson.fromJson<JsonObject>(response.body!!.string())
         return data.getAsJsonArray("images").mapIndexed { i, it ->
             Page(i, "/en/comic/${data["comic"]["slug"].asString}/reader/${it["page"].asInt}", it["source_url"].asString)
         }
     }
 
     override fun imageUrlParse(response: Response): String = throw UnsupportedOperationException("Not used")
+
+    // Authorization
+
+    private fun authIntercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+        if (username.isEmpty() or password.isEmpty()) {
+            return chain.proceed(request)
+        }
+
+        if (token.isEmpty()) {
+            token = this.login(chain, username, password)
+        }
+        val authRequest = request.newBuilder()
+            .addHeader("Authorization", "Bearer $token")
+            .build()
+        return chain.proceed(authRequest)
+    }
+
+    private fun login(chain: Interceptor.Chain, username: String, password: String): String {
+        val jsonObject = JSONObject().apply {
+            this.put("username", username)
+            this.put("password", password)
+            this.put("remember_me", true)
+        }
+        val body = RequestBody.create(MEDIA_TYPE, jsonObject.toString())
+        val response = chain.proceed(POST("$baseUrl/api/login", headers, body))
+        if (response.code == 401) {
+            throw Exception("Failed to login, check if username and password are correct")
+        }
+
+        if (response.body == null)
+            throw Exception("Login response body is empty")
+        try {
+            return JSONObject(response.body!!.string())
+                .getJSONObject("auth")
+                .getString("access_token")
+        } catch (e: JSONException) {
+            throw Exception("Cannot parse login response body")
+        }
+    }
+
+    private var token: String = ""
+    private val username by lazy { getPrefUsername() }
+    private val password by lazy { getPrefPassword() }
+
+    // Preferences
+
+    private val preferences: SharedPreferences by lazy {
+        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
+
+    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
+        screen.addPreference(screen.editTextPreference(USERNAME_TITLE, USERNAME_DEFAULT, username))
+        screen.addPreference(screen.editTextPreference(PASSWORD_TITLE, PASSWORD_DEFAULT, password, true))
+    }
+
+    private fun androidx.preference.PreferenceScreen.editTextPreference(title: String, default: String, value: String, isPassword: Boolean = false): androidx.preference.EditTextPreference {
+        return androidx.preference.EditTextPreference(context).apply {
+            key = title
+            this.title = title
+            summary = value
+            this.setDefaultValue(default)
+            dialogTitle = title
+
+            if (isPassword) {
+                setOnBindEditTextListener {
+                    it.inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
+                }
+            }
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val res = preferences.edit().putString(title, newValue as String).commit()
+                    Toast.makeText(context, "Restart Tachiyomi to apply new setting.", Toast.LENGTH_LONG).show()
+                    res
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }
+    }
+
+    private fun getPrefUsername(): String = preferences.getString(USERNAME_TITLE, USERNAME_DEFAULT)!!
+    private fun getPrefPassword(): String = preferences.getString(PASSWORD_TITLE, PASSWORD_DEFAULT)!!
 
     // Filters
 
@@ -252,5 +359,10 @@ class HentaiHand(override val lang: String, val hhLangId: Int) : HttpSource() {
     companion object {
         @SuppressLint("SimpleDateFormat")
         private val DATE_FORMAT = SimpleDateFormat("yyyy-dd-MM")
+        private val MEDIA_TYPE = "application/json; charset=utf-8".toMediaTypeOrNull()
+        private const val USERNAME_TITLE = "Username"
+        private const val USERNAME_DEFAULT = ""
+        private const val PASSWORD_TITLE = "Password"
+        private const val PASSWORD_DEFAULT = ""
     }
 }

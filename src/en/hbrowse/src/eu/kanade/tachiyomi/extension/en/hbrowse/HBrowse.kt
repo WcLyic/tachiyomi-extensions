@@ -22,7 +22,7 @@ class HBrowse : ParsedHttpSource() {
 
     override val name = "HBrowse"
 
-    override val baseUrl = "http://www.hbrowse.com"
+    override val baseUrl = "https://www.hbrowse.com"
 
     override val lang = "en"
 
@@ -42,7 +42,7 @@ class HBrowse : ParsedHttpSource() {
         .addInterceptor { chain ->
             val originalRequest = chain.request()
             when {
-                originalRequest.url().toString() == searchUrl -> {
+                originalRequest.url.toString() == searchUrl -> {
                     phpSessId = searchClient.newCall(originalRequest).execute()
                         .headers("Set-Cookie")
                         .firstOrNull { it.contains("PHPSESSID") }
@@ -53,11 +53,11 @@ class HBrowse : ParsedHttpSource() {
                     val newHeaders = headersBuilder()
                         .add("Cookie", phpSessId)
 
-                    val contentLength = originalRequest.body()!!.contentLength()
+                    val contentLength = originalRequest.body!!.contentLength()
 
                     searchClient.newCall(GET("$baseUrl/${if (contentLength > 8000) "result" else "search"}/1", newHeaders.build())).execute()
                 }
-                originalRequest.url().toString().contains(nextSearchPageUrlRegex) -> {
+                originalRequest.url.toString().contains(nextSearchPageUrlRegex) -> {
                     searchClient.newCall(originalRequest).execute()
                 }
                 else -> chain.proceed(originalRequest)

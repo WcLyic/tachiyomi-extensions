@@ -2,9 +2,6 @@ package eu.kanade.tachiyomi.extension.zh.manhuagui
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.support.v7.preference.CheckBoxPreference
-import android.support.v7.preference.ListPreference
-import android.support.v7.preference.PreferenceScreen
 import com.google.gson.Gson
 import com.squareup.duktape.Duktape
 import eu.kanade.tachiyomi.lib.ratelimit.SpecificHostRateLimitInterceptor
@@ -29,6 +26,7 @@ import okhttp3.Call
 import okhttp3.Callback
 import okhttp3.Headers
 import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -50,23 +48,30 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
     }
 
     override val name = "漫画柜"
+
+    private val baseHost = if (preferences.getBoolean(USE_MIRROR_URL_PREF, false)) {
+        "mhgui.com"
+    } else {
+        "manhuagui.com"
+    }
+
     override val baseUrl =
         if (preferences.getBoolean(SHOW_ZH_HANT_WEBSITE_PREF, false))
-            "https://tw.manhuagui.com"
+            "https://tw.$baseHost"
         else
-            "https://www.manhuagui.com"
+            "https://www.$baseHost"
     override val lang = "zh"
     override val supportsLatest = true
 
     private val imageServer = arrayOf("https://i.hamreus.com", "https://cf.hamreus.com")
-    private val mobileWebsiteUrl = "https://m.manhuagui.com"
+    private val mobileWebsiteUrl = "https://m.$baseHost"
     private val gson = Gson()
-    private val baseHttpUrl: HttpUrl = HttpUrl.parse(baseUrl)!!
+    private val baseHttpUrl: HttpUrl = baseUrl.toHttpUrlOrNull()!!
 
     // Add rate limit to fix manga thumbnail load failure
     private val mainSiteRateLimitInterceptor = SpecificHostRateLimitInterceptor(baseHttpUrl, preferences.getString(MAINSITE_RATELIMIT_PREF, "2")!!.toInt())
-    private val imageCDNRateLimitInterceptor1 = SpecificHostRateLimitInterceptor(HttpUrl.parse(imageServer[0])!!, preferences.getString(IMAGE_CDN_RATELIMIT_PREF, "4")!!.toInt())
-    private val imageCDNRateLimitInterceptor2 = SpecificHostRateLimitInterceptor(HttpUrl.parse(imageServer[1])!!, preferences.getString(IMAGE_CDN_RATELIMIT_PREF, "4")!!.toInt())
+    private val imageCDNRateLimitInterceptor1 = SpecificHostRateLimitInterceptor(imageServer[0].toHttpUrlOrNull()!!, preferences.getString(IMAGE_CDN_RATELIMIT_PREF, "4")!!.toInt())
+    private val imageCDNRateLimitInterceptor2 = SpecificHostRateLimitInterceptor(imageServer[1].toHttpUrlOrNull()!!, preferences.getString(IMAGE_CDN_RATELIMIT_PREF, "4")!!.toInt())
 
     override val client: OkHttpClient =
         if (getShowR18())
@@ -74,7 +79,7 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
                 .addNetworkInterceptor(mainSiteRateLimitInterceptor)
                 .addNetworkInterceptor(imageCDNRateLimitInterceptor1)
                 .addNetworkInterceptor(imageCDNRateLimitInterceptor2)
-                .addNetworkInterceptor(AddCookieHeaderInterceptor(baseHttpUrl.host()!!))
+                .addNetworkInterceptor(AddCookieHeaderInterceptor(baseHttpUrl.host))
                 .build()
         else
             network.client.newBuilder()
@@ -86,7 +91,7 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
     // Add R18 verification cookie
     class AddCookieHeaderInterceptor(private val baseHost: String) : Interceptor {
         override fun intercept(chain: Interceptor.Chain): Response {
-            if (chain.request().url().host() == baseHost) {
+            if (chain.request().url.host == baseHost) {
                 val originalCookies = chain.request().header("Cookie") ?: ""
                 if (originalCookies != "" && !originalCookies.contains("isAdult=1")) {
                     return chain.proceed(
@@ -213,7 +218,7 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
 
     override fun searchMangaParse(response: Response): MangasPage {
         val document = response.asJsoup()
-        if (response.request().url().encodedPath().startsWith("/s/")) {
+        if (response.request.url.encodedPath.startsWith("/s/")) {
             // Normal search
             val mangas = document.select(searchMangaSelector()).map { element ->
                 searchMangaFromElement(element)
@@ -292,7 +297,7 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
                             """LZString.decompressFromBase64('${hiddenEncryptedChapterList.`val`()}');"""
                     ) as String
                 }
-                val hiddenChapterList = Jsoup.parse(decodedHiddenChapterList, response.request().url().toString())
+                val hiddenChapterList = Jsoup.parse(decodedHiddenChapterList, response.request.url.toString())
                 if (hiddenChapterList != null) {
                     // Replace R18 warning with actual chapter list
                     document.select("#erroraudit_show").first().replaceWith(hiddenChapterList)
@@ -466,75 +471,15 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
             }
         }
 
-        screen.addPreference(mainSiteRateLimitPreference)
-        screen.addPreference(imgCDNRateLimitPreference)
-        screen.addPreference(zhHantPreference)
-        screen.addPreference(r18Preference)
-    }
+        val mirrorURLPreference = androidx.preference.CheckBoxPreference(screen.context).apply {
+            key = USE_MIRROR_URL_PREF
+            title = USE_MIRROR_URL_PREF_TITLE
+            summary = USE_MIRROR_URL_PREF_SUMMARY
 
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val mainSiteRateLimitPreference = ListPreference(screen.context).apply {
-            key = MAINSITE_RATELIMIT_PREF
-            title = MAINSITE_RATELIMIT_PREF_TITLE
-            entries = ENTRIES_ARRAY
-            entryValues = ENTRIES_ARRAY
-            summary = MAINSITE_RATELIMIT_PREF_SUMMARY
-
-            setDefaultValue("2")
+            setDefaultValue(false)
             setOnPreferenceChangeListener { _, newValue ->
                 try {
-                    val setting = preferences.edit().putString(MAINSITE_RATELIMIT_PREF, newValue as String).commit()
-                    setting
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    false
-                }
-            }
-        }
-
-        val imgCDNRateLimitPreference = ListPreference(screen.context).apply {
-            key = IMAGE_CDN_RATELIMIT_PREF
-            title = IMAGE_CDN_RATELIMIT_PREF_TITLE
-            entries = ENTRIES_ARRAY
-            entryValues = ENTRIES_ARRAY
-            summary = IMAGE_CDN_RATELIMIT_PREF_SUMMARY
-
-            setDefaultValue("4")
-            setOnPreferenceChangeListener { _, newValue ->
-                try {
-                    val setting = preferences.edit().putString(IMAGE_CDN_RATELIMIT_PREF, newValue as String).commit()
-                    setting
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    false
-                }
-            }
-        }
-
-        val zhHantPreference = CheckBoxPreference(screen.context).apply {
-            key = SHOW_ZH_HANT_WEBSITE_PREF
-            title = SHOW_ZH_HANT_WEBSITE_PREF_TITLE
-            summary = SHOW_ZH_HANT_WEBSITE_PREF_SUMMARY
-
-            setOnPreferenceChangeListener { _, newValue ->
-                try {
-                    val setting = preferences.edit().putBoolean(SHOW_ZH_HANT_WEBSITE_PREF, newValue as Boolean).commit()
-                    setting
-                } catch (e: Exception) {
-                    e.printStackTrace()
-                    false
-                }
-            }
-        }
-
-        val r18Preference = CheckBoxPreference(screen.context).apply {
-            key = SHOW_R18_PREF
-            title = SHOW_R18_PREF_TITLE
-            summary = SHOW_R18_PREF_SUMMARY
-
-            setOnPreferenceChangeListener { _, newValue ->
-                try {
-                    val newSetting = preferences.edit().putBoolean(SHOW_R18_PREF, newValue as Boolean).commit()
+                    val newSetting = preferences.edit().putBoolean(USE_MIRROR_URL_PREF, newValue as Boolean).commit()
                     newSetting
                 } catch (e: Exception) {
                     e.printStackTrace()
@@ -547,6 +492,7 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
         screen.addPreference(imgCDNRateLimitPreference)
         screen.addPreference(zhHantPreference)
         screen.addPreference(r18Preference)
+        screen.addPreference(mirrorURLPreference)
     }
 
     private fun getShowR18(): Boolean = preferences.getBoolean(SHOW_R18_PREF, false)
@@ -722,6 +668,10 @@ class Manhuagui : ConfigurableSource, ParsedHttpSource() {
         private const val SHOW_ZH_HANT_WEBSITE_PREF = "showZhHantWebsite"
         private const val SHOW_ZH_HANT_WEBSITE_PREF_TITLE = "使用繁体版网站" // "Use traditional chinese version website"
         private const val SHOW_ZH_HANT_WEBSITE_PREF_SUMMARY = "需要重启软件以生效。" // "You need to restart Tachiyomi"
+
+        private const val USE_MIRROR_URL_PREF = "useMirrorWebsitePreference"
+        private const val USE_MIRROR_URL_PREF_TITLE = "使用镜像网址"
+        private const val USE_MIRROR_URL_PREF_SUMMARY = "使用镜像网址: mhgui.com，部分漫画可能无法观看。" // "Use mirror url. Some manga may be hidden."
 
         private const val MAINSITE_RATELIMIT_PREF = "mainSiteRatelimitPreference"
         private const val MAINSITE_RATELIMIT_PREF_TITLE = "主站每秒连接数限制" // "Ratelimit permits per second for main website"

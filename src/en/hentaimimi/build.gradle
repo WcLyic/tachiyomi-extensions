@@ -1,0 +1,17 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+ext {
+    extName = 'HentaiMimi'
+    pkgNameSuffix = 'en.hentaimimi'
+    extClass = '.HentaiMimi'
+    extVersionCode = 3
+    libVersion = '1.2'
+    containsNsfw = true
+}
+
+dependencies {
+    implementation project(':lib-ratelimit')
+}
+
+apply from: "$rootDir/common.gradle"

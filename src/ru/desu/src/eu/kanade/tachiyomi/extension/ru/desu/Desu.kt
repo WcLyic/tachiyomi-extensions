@@ -50,16 +50,50 @@ class Desu : HttpSource() {
         url = "/$id"
         title = obj.getString("name")
         thumbnail_url = obj.getJSONObject("image").getString("original")
-        description = obj.getString("description")
+        val ratingValue = obj.getString("score").toFloat()
+        val ratingStar = when {
+            ratingValue > 9.5 -> "★★★★★"
+            ratingValue > 8.5 -> "★★★★✬"
+            ratingValue > 7.5 -> "★★★★☆"
+            ratingValue > 6.5 -> "★★★✬☆"
+            ratingValue > 5.5 -> "★★★☆☆"
+            ratingValue > 4.5 -> "★★✬☆☆"
+            ratingValue > 3.5 -> "★★☆☆☆"
+            ratingValue > 2.5 -> "★✬☆☆☆"
+            ratingValue > 1.5 -> "★☆☆☆☆"
+            ratingValue > 0.5 -> "✬☆☆☆☆"
+            else -> "☆☆☆☆☆"
+        }
+        val rawAgeValue = obj.getString("adult")
+        val rawAgeStop = when (rawAgeValue) {
+            "1" -> "18+"
+            else -> "0+"
+        }
+
+        val rawTypeValue = obj.getString("kind")
+        val rawTypeStr = when (rawTypeValue) {
+            "manga" -> "Манга"
+            "manhwa" -> "Манхва"
+            "manhua" -> "Маньхуа"
+            "comics" -> "Комикс"
+            "one_shot" -> "Ваншот"
+            else -> "Манга"
+        }
+
+        var altName = ""
+        if (obj.getString("synonyms").isNotEmpty() && obj.getString("synonyms") != "null") {
+            altName = "Альтернативные названия:\n" + obj.getString("synonyms").replace("|", " / ") + "\n\n"
+        }
+        description = obj.getString("russian") + "\n" + ratingStar + " " + ratingValue + " (голосов: " + obj.getString("score_users") + ")\n" + altName + obj.getString("description")
         genre = if (chapter) {
             val jsonArray = obj.getJSONArray("genres")
             val genreList = mutableListOf<String>()
             for (i in 0 until jsonArray.length()) {
                 genreList.add(jsonArray.getJSONObject(i).getString("russian"))
             }
-            genreList.joinToString()
+            genreList.plusElement(rawTypeStr).plusElement(rawAgeStop).joinToString()
         } else {
-            obj.getString("genres")
+            obj.getString("genres") + ", " + rawTypeStr + ", " + rawAgeStop
         }
         status = when (obj.getString("status")) {
             "ongoing" -> SManga.ONGOING
@@ -101,7 +135,7 @@ class Desu : HttpSource() {
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
-        val res = response.body()!!.string()
+        val res = response.body!!.string()
         val obj = JSONObject(res).getJSONArray("response")
         val nav = JSONObject(res).getJSONObject("pageNavParams")
         val count = nav.getInt("count")
@@ -131,12 +165,12 @@ class Desu : HttpSource() {
         return GET(baseUrl.substringBefore("/api") + manga.url, headers)
     }
     override fun mangaDetailsParse(response: Response) = SManga.create().apply {
-        val obj = JSONObject(response.body()!!.string()).getJSONObject("response")
+        val obj = JSONObject(response.body!!.string()).getJSONObject("response")
         mangaFromJSON(obj, true)
     }
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val obj = JSONObject(response.body()!!.string()).getJSONObject("response")
+        val obj = JSONObject(response.body!!.string()).getJSONObject("response")
         val ret = ArrayList<SChapter>()
 
         val cid = obj.getInt("id")
@@ -164,7 +198,7 @@ class Desu : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val obj = JSONObject(response.body()!!.string()).getJSONObject("response")
+        val obj = JSONObject(response.body!!.string()).getJSONObject("response")
         val pages = obj.getJSONObject("pages")
         val list = pages.getJSONArray("list")
         val ret = ArrayList<Page>(list.length())
@@ -176,6 +210,32 @@ class Desu : HttpSource() {
 
     override fun imageUrlParse(response: Response) =
         throw UnsupportedOperationException("This method should not be called!")
+
+    private fun searchMangaByIdRequest(id: String): Request {
+        return GET("$baseUrl/$id", headers)
+    }
+
+    override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
+        return if (query.startsWith(PREFIX_SLUG_SEARCH)) {
+            val realQuery = query.removePrefix(PREFIX_SLUG_SEARCH)
+            client.newCall(searchMangaByIdRequest(realQuery))
+                .asObservableSuccess()
+                .map { response ->
+                    val details = mangaDetailsParse(response)
+                    details.url = "/$realQuery"
+                    MangasPage(listOf(details), false)
+                }
+        } else {
+            client.newCall(searchMangaRequest(page, query, filters))
+                .asObservableSuccess()
+                .map { response ->
+                    searchMangaParse(response)
+                }
+        }
+    }
+    companion object {
+        const val PREFIX_SLUG_SEARCH = "slug:"
+    }
 
     private class OrderBy : Filter.Select<String>(
         "Сортировка",

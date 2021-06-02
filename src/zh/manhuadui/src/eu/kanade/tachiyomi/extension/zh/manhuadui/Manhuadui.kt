@@ -8,7 +8,7 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -41,7 +41,7 @@ class Manhuadui : ParsedHttpSource() {
     override fun latestUpdatesRequest(page: Int) = GET("$baseUrl/update/$page/", headers)
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         return if (query != "") {
-            val url = HttpUrl.parse("$baseUrl/search/?keywords=$query")?.newBuilder()
+            val url = "$baseUrl/search/?keywords=$query".toHttpUrlOrNull()?.newBuilder()
             GET(url.toString(), headers)
         } else {
             val params = filters.map {
@@ -49,7 +49,7 @@ class Manhuadui : ParsedHttpSource() {
                     it.toUriPart()
                 } else ""
             }.filter { it != "" }.joinToString("-")
-            val url = HttpUrl.parse("$baseUrl/list/$params/$page/")?.newBuilder()
+            val url = "$baseUrl/list/$params/$page/".toHttpUrlOrNull()?.newBuilder()
             GET(url.toString(), headers)
         }
     }
@@ -146,7 +146,7 @@ class Manhuadui : ParsedHttpSource() {
             if (imgStr.startsWith("http://images.dmzj.com")) {
                 Page(i, "", "https://img01.eshanyao.com/showImage.php?url=$imgStr")
             } else {
-                Page(i, "", if (imgStr.indexOf("http") == -1) "${imageServer[0]}/$imgStr" else imgStr)
+                Page(i, "", if (imgStr.indexOf("http") == -1) "${imageServer[0]}$imgStr" else imgStr)
             }
         }
     }

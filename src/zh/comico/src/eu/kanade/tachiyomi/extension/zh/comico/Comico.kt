@@ -27,7 +27,7 @@ abstract class Comico(
     override val supportsLatest: Boolean
 ) : ParsedHttpSource() {
 
-    override val baseUrl = "http://www.comico.com.tw"
+    override val baseUrl = "https://www.comico.com.tw"
 
     override val lang = "zh"
 
@@ -135,7 +135,7 @@ abstract class Comico(
     override fun chapterListParse(response: Response): List<SChapter> {
         val chapters = mutableListOf<SChapter>()
 
-        gson.fromJson<JsonObject>(response.body()!!.string())["result"]["list"].asJsonArray.forEach {
+        gson.fromJson<JsonObject>(response.body!!.string())["result"]["list"].asJsonArray.forEach {
             if (it["freeFlg"].asString == "Y") chapters.add(chapterFromJson(it))
         }
 

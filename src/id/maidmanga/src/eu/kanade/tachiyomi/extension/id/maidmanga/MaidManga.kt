@@ -7,7 +7,7 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.nodes.Document
@@ -50,7 +50,7 @@ class MaidManga : ParsedHttpSource() {
     override fun popularMangaNextPageSelector() = searchMangaNextPageSelector()
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val url = HttpUrl.parse("$baseUrl/advanced-search/${pagePathSegment(page)}")!!.newBuilder()
+        val url = "$baseUrl/advanced-search/${pagePathSegment(page)}".toHttpUrlOrNull()!!.newBuilder()
         url.addQueryParameter("title", query)
         (if (filters.isEmpty()) getFilterList() else filters).forEach { filter ->
             when (filter) {
@@ -103,6 +103,24 @@ class MaidManga : ParsedHttpSource() {
             thumbnail_url = document.select("div.series-thumb img").attr("abs:src")
             status = parseStatus(document.select("div.block span.status").text())
             author = document.select("ul.series-infolist li b:contains(Author) + span").text()
+
+            // add series type(manga/manhwa/manhua/other) thinggy to genre
+            document.select("div.block span.type").firstOrNull()?.ownText()?.let {
+                if (it.isEmpty().not() && it != "-" && genre!!.contains(it, true).not()) {
+                    genre += if (genre!!.isEmpty()) it else ", $it"
+                }
+            }
+
+            // add alternative name to manga description
+            val altName = "Alternative Name: "
+            document.select(".series-title span").firstOrNull()?.ownText()?.let {
+                if (it.isEmpty().not()) {
+                    description += when {
+                        description!!.isEmpty() -> altName + it
+                        else -> "\n\n$altName" + it
+                    }
+                }
+            }
         }
     }
 

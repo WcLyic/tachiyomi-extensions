@@ -2,8 +2,6 @@ package eu.kanade.tachiyomi.extension.en.readmanhwa
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.support.v7.preference.CheckBoxPreference
-import android.support.v7.preference.PreferenceScreen
 import com.github.salomonbrys.kotson.fromJson
 import com.github.salomonbrys.kotson.get
 import com.github.salomonbrys.kotson.int
@@ -24,7 +22,7 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import okhttp3.Headers
-import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -61,7 +59,7 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
     private val gson = Gson()
 
     private fun parseMangaFromJson(response: Response): MangasPage {
-        val jsonObject = gson.fromJson<JsonObject>(response.body()!!.string())
+        val jsonObject = gson.fromJson<JsonObject>(response.body!!.string())
 
         val mangas = jsonObject["data"].asJsonArray.map { json ->
             SManga.create().apply {
@@ -74,14 +72,14 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
         return MangasPage(mangas, jsonObject["current_page"].int < jsonObject["last_page"].int)
     }
     private fun getMangaUrl(url: String): String {
-        return HttpUrl.parse(url)!!.newBuilder()
+        return url.toHttpUrlOrNull()!!.newBuilder()
             .setQueryParameter("nsfw", isNSFWEnabledInPref().toString()).toString()
     }
 
     // Popular
 
     override fun popularMangaRequest(page: Int): Request {
-        return GET(getMangaUrl("$baseUrl/api/comics?per_page=36&page=$page&q=&sort=popularity&order=desc&duration=week"), headers)
+        return GET(getMangaUrl("$baseUrl/api/comics?per_page=36&page=$page&q=&sort=popularity&order=desc&duration=all"), headers)
     }
 
     override fun popularMangaParse(response: Response): MangasPage = parseMangaFromJson(response)
@@ -99,10 +97,9 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val enableNsfw = (filters.find { it is NSFWFilter } as? Filter.CheckBox)?.state ?: true
 
-        val url = HttpUrl.parse("$baseUrl/api/comics")!!.newBuilder()
+        val url = "$baseUrl/api/comics".toHttpUrlOrNull()!!.newBuilder()
             .addQueryParameter("per_page", "36")
             .addQueryParameter("page", page.toString())
-            .addQueryParameter("order", "desc")
             .addQueryParameter("q", query)
             .addQueryParameter("nsfw", enableNsfw.toString())
 
@@ -136,13 +133,8 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
                     }
                 }
                 is OrderBy -> {
-                    var orderby = ""
-                    if (filter.state!!.ascending) {
-                        orderby = "asc"
-                    } else {
-                        orderby = "desc"
-                    }
-                    var sort = arrayOf("uploaded_at", "title", "pages", "favorites", "popularity")[filter.state!!.index]
+                    val orderby = if (filter.state!!.ascending) "asc" else "desc"
+                    val sort = arrayOf("uploaded_at", "title", "pages", "favorites", "popularity")[filter.state!!.index]
                     url.addQueryParameter("sort", sort)
                     url.addQueryParameter("order", orderby)
                 }
@@ -169,7 +161,7 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
     }
 
     override fun mangaDetailsParse(response: Response): SManga {
-        val jsonObject = gson.fromJson<JsonObject>(response.body()!!.string())
+        val jsonObject = gson.fromJson<JsonObject>(response.body!!.string())
 
         return SManga.create().apply {
             description = jsonObject["description"].nullString
@@ -203,7 +195,7 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
     }
 
     private fun chapterListParse(response: Response, titleSlug: String): List<SChapter> {
-        return gson.fromJson<JsonArray>(response.body()!!.string()).map { json ->
+        return gson.fromJson<JsonArray>(response.body!!.string()).map { json ->
             SChapter.create().apply {
                 name = json["name"].string
                 url = "$titleSlug/${json["slug"].string}"
@@ -235,7 +227,7 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        return gson.fromJson<JsonObject>(response.body()!!.string())["images"].asJsonArray.mapIndexed { i, json ->
+        return gson.fromJson<JsonObject>(response.body!!.string())["images"].asJsonArray.mapIndexed { i, json ->
             Page(i, "", json["source_url"].string)
         }
     }
@@ -371,20 +363,6 @@ class ReadManhwa : ConfigurableSource, HttpSource() {
         arrayOf("Date", "Title", "Pages", "Favorites", "Popularity"),
         Selection(0, false)
     )
-
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val nsfw = CheckBoxPreference(screen.context).apply {
-            key = NSFW
-            title = NSFW_TITLE
-            setDefaultValue(NSFW_DEFAULT)
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val selected = newValue as Boolean
-                preferences.edit().putBoolean(NSFW, selected).commit()
-            }
-        }
-        screen.addPreference(nsfw)
-    }
 
     override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
         val nsfw = androidx.preference.CheckBoxPreference(screen.context).apply {

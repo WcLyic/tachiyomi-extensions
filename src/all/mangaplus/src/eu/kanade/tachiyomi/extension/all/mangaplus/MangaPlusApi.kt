@@ -2,11 +2,7 @@ package eu.kanade.tachiyomi.extension.all.mangaplus
 
 import com.google.gson.annotations.SerializedName
 import kotlinx.serialization.Serializable
-import kotlinx.serialization.Serializer
 import kotlinx.serialization.protobuf.ProtoNumber
-
-@Serializer(forClass = MangaPlusResponse::class)
-object MangaPlusSerializer
 
 @Serializable
 data class MangaPlusResponse(
@@ -88,7 +84,20 @@ enum class Language(val id: Int) {
 
     @ProtoNumber(1)
     @SerializedName("1")
-    SPANISH(1)
+    SPANISH(1),
+
+    // Temporary add the languages that are not present on the API yet.
+    // @ProtoNumber(2)
+    // @SerializedName("2")
+    THAI(2),
+
+    // @ProtoNumber(3)
+    // @SerializedName("3")
+    PORTUGUESE_BR(3),
+
+    // @ProtoNumber(4)
+    // @SerializedName("4")
+    INDONESIAN(4)
 }
 
 @Serializable
@@ -216,6 +225,8 @@ const val DECODE_SCRIPT: String =
     var Language = new Enum("Language")
         .add("ENGLISH", 0)
         .add("SPANISH", 1);
+    //     .add("THAI", 2)
+    //     .add("PORTUGUESE_BR", 3);
 
     var UpdatedTitleGroup = new Type("UpdatedTitleGroup")
         .add(new Field("groupName", 1, "string"))

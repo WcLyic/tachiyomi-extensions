@@ -103,7 +103,7 @@ class Hiveworks : ParsedHttpSource() {
     override fun searchMangaSelector() = popularMangaSelector() + ", div.originalsblock"
     override fun searchMangaNextPageSelector() = popularMangaNextPageSelector()
     override fun searchMangaParse(response: Response): MangasPage {
-        val url = response.request().url().toString()
+        val url = response.request.url.toString()
         val document = response.asJsoup()
 
         val selectManga = document.select(searchMangaSelector())
@@ -195,7 +195,10 @@ class Hiveworks : ParsedHttpSource() {
     }
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val url = response.request().url().toString()
+        val url = response.request.url.toString()
+        when {
+            "witchycomic" in url -> return witchyChapterListParse(response)
+        }
         val document = response.asJsoup()
         val baseUrl = document.select("div script").html().substringAfter("href='").substringBefore("'")
         val elements = document.select(chapterListSelector())
@@ -227,7 +230,7 @@ class Hiveworks : ParsedHttpSource() {
 
     override fun pageListRequest(chapter: SChapter) = GET(chapter.url, headers)
     override fun pageListParse(response: Response): List<Page> {
-        val url = response.request().url().toString()
+        val url = response.request.url.toString()
         val document = response.asJsoup()
         val pages = mutableListOf<Page>()
 
@@ -390,6 +393,25 @@ class Hiveworks : ParsedHttpSource() {
     )
 
     // Other Code
+    // Gets the chapter list for witchycomic
+    private fun witchyChapterListParse(response: Response): List<SChapter> {
+        val document = response.asJsoup()
+        val elements = document.select(".cc-storyline-pagethumb a")
+        if (elements.isNullOrEmpty()) throw Exception("This comic has a unsupported chapter list")
+        val chapters = mutableListOf<SChapter>()
+        for (i in 1 until elements.size) {
+            val chapter = SChapter.create()
+            chapter.name = "Page " + i
+            chapter.url = elements[i].attr("href")
+            // Date upload isn't available for witchy, unfortunately. As a
+            // workaround to ensure notifications work, use system time.
+            chapter.date_upload = System.currentTimeMillis()
+            chapters.add(chapter)
+        }
+        chapters.retainAll { it.url.contains("page-") }
+        chapters.reverse()
+        return chapters
+    }
 
     // Builds Image from mouse tooltip text
     private fun smbcTextHandler(document: Document): String {
@@ -430,9 +452,9 @@ class Hiveworks : ParsedHttpSource() {
         return asObservable().doOnNext { response ->
             if (!response.isSuccessful) {
                 response.close()
-                when (response.code()) {
+                when (response.code) {
                     404 -> throw Exception("This comic has a unsupported chapter list")
-                    else -> throw Exception("HiveWorks Comics HTTP Error ${response.code()}")
+                    else -> throw Exception("HiveWorks Comics HTTP Error ${response.code}")
                 }
             }
         }

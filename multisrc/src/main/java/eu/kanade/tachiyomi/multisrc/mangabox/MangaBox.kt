@@ -10,7 +10,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Headers
-import okhttp3.HttpUrl
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -80,7 +80,7 @@ abstract class MangaBox(
         return if (query.isNotBlank() && getAdvancedGenreFilters().isEmpty()) {
             GET("$baseUrl/$simpleQueryPath${normalizeSearchQuery(query)}?page=$page", headers)
         } else {
-            val url = HttpUrl.parse(baseUrl)!!.newBuilder()
+            val url = baseUrl.toHttpUrlOrNull()!!.newBuilder()
             if (getAdvancedGenreFilters().isNotEmpty()) {
                 url.addPathSegment("advanced_search")
                 url.addQueryParameter("page", page.toString())
@@ -154,8 +154,21 @@ abstract class MangaBox(
                 ?.replace("""<\s*br\s*/?>""".toRegex(), "\n")
                 ?.replace("<[^>]*>".toRegex(), "")
             thumbnail_url = document.select(thumbnailSelector).attr("abs:src")
+
+            // add alternative name to manga description
+            document.select(altNameSelector).firstOrNull()?.ownText()?.let {
+                if (it.isEmpty().not()) {
+                    description += when {
+                        description!!.isEmpty() -> altName + it
+                        else -> "\n\n$altName" + it
+                    }
+                }
+            }
         }
     }
+
+    open val altNameSelector = ".story-alternative, tr:has(.info-alternative) h2"
+    open val altName = "Alternative Name" + ": "
 
     private fun parseStatus(status: String?) = when {
         status == null -> SManga.UNKNOWN
@@ -193,7 +206,8 @@ abstract class MangaBox(
             element.select("a").let {
                 url = it.attr("abs:href").substringAfter(baseUrl) // intentionally not using setUrlWithoutDomain
                 name = it.text()
-                scanlator = HttpUrl.parse(it.attr("abs:href"))!!.host() // show where chapters are actually from
+                scanlator =
+                    it.attr("abs:href").toHttpUrlOrNull()!!.host // show where chapters are actually from
             }
             date_upload = parseChapterDate(element.selectDateFromElement().text(), scanlator!!) ?: 0
         }
@@ -211,7 +225,7 @@ abstract class MangaBox(
             }?.timeInMillis
         } else {
             try {
-                if (host.contains("manganelo", ignoreCase = true)) {
+                if (host.contains("manganato", ignoreCase = true)) {
                     // Nelo's date format
                     SimpleDateFormat("MMM dd,yy", Locale.ENGLISH).parse(date)
                 } else {

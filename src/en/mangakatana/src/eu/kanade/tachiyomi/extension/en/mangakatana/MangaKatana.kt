@@ -2,13 +2,16 @@ package eu.kanade.tachiyomi.extension.en.mangakatana
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.FilterList
+import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
-import okhttp3.MediaType
+import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
-import okhttp3.ResponseBody
+import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import java.text.SimpleDateFormat
@@ -26,9 +29,9 @@ class MangaKatana : ParsedHttpSource() {
     override val client: OkHttpClient = network.cloudflareClient.newBuilder().addNetworkInterceptor { chain ->
         val originalResponse = chain.proceed(chain.request())
         if (originalResponse.headers("Content-Type").contains("application/octet-stream")) {
-            val orgBody = originalResponse.body()!!.bytes()
-            val extension = chain.request().url().toString().substringAfterLast(".")
-            val newBody = ResponseBody.create(MediaType.parse("image/$extension"), orgBody)
+            val orgBody = originalResponse.body!!.bytes()
+            val extension = chain.request().url.toString().substringAfterLast(".")
+            val newBody = orgBody.toResponseBody("image/$extension".toMediaTypeOrNull())
             originalResponse.newBuilder()
                 .body(newBody)
                 .build()
@@ -65,13 +68,29 @@ class MangaKatana : ParsedHttpSource() {
 
     override fun searchMangaNextPageSelector() = latestUpdatesNextPageSelector()
 
+    override fun searchMangaParse(response: Response): MangasPage {
+        return if (response.request.url.toString().contains("/manga/")) {
+            val document = response.asJsoup()
+            val manga = SManga.create().apply {
+                thumbnail_url = parseThumbnail(document)
+                title = document.select("h1.heading").first().text()
+            }
+            manga.setUrlWithoutDomain(response.request.url.toString())
+            MangasPage(listOf(manga), false)
+        } else {
+            super.searchMangaParse(response)
+        }
+    }
+
     override fun mangaDetailsParse(document: Document) = SManga.create().apply {
         author = document.select(".author").text()
         description = document.select(".summary > p").text()
         status = parseStatus(document.select(".value.status").text())
         genre = document.select(".genres > a").joinToString { it.text() }
-        thumbnail_url = document.select("div.media div.cover img").attr("abs:src")
+        thumbnail_url = parseThumbnail(document)
     }
+
+    private fun parseThumbnail(document: Document) = document.select("div.media div.cover img").attr("abs:src")
 
     private fun parseStatus(status: String) = when {
         status.contains("Ongoing") -> SManga.ONGOING

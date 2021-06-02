@@ -84,7 +84,7 @@ class SilentMangaAudition : HttpSource() {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val chapterUrl = response.request().url().toString()
+        val chapterUrl = response.request.url.toString()
 
         return response.asJsoup()
             .select("div.swiper-wrapper div.swiper-slide img.swiper-lazy")
@@ -129,6 +129,7 @@ class SilentMangaAudition : HttpSource() {
     companion object {
         private const val SMACMAG_URL = "https://smacmag.net"
 
-        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/83.0.4103.116 Safari/537.36"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) " +
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/90.0.4430.93 Safari/537.36"
     }
 }

@@ -33,6 +33,7 @@ data class MangaDetDto(
     val id: Long,
     val en_name: String,
     val rus_name: String,
+    val another_name: String,
     val dir: String,
     val description: String,
     val issue_year: Int,
@@ -40,7 +41,10 @@ data class MangaDetDto(
     val type: GenresDto,
     val genres: List<GenresDto>,
     val branches: List<BranchesDto>,
-    val status: StatusDto
+    val status: StatusDto,
+    val avg_rating: String,
+    val count_rating: Int,
+    val age_limit: Int
 )
 
 data class PropsDto(
@@ -80,6 +84,7 @@ data class BookDto(
 
 data class PagesDto(
     val id: Int,
+    val height: Int,
     val link: String,
     val page: Int,
     val count_comments: Int
@@ -96,6 +101,7 @@ data class UserDto(
 data class PaidPagesDto(
     val id: Long,
     val link: String,
+    val height: Int,
     val page: Int
 )
 

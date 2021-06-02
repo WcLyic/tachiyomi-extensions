@@ -1,8 +1,8 @@
 apply plugin: 'org.jmailen.kotlinter'
 
 android {
-    compileSdkVersion Config.compileSdk
-    buildToolsVersion Config.buildTools
+    compileSdkVersion AndroidConfig.compileSdk
+    buildToolsVersion AndroidConfig.buildTools
 
     buildTypes {
         release {
@@ -25,8 +25,8 @@ android {
     }
 
     defaultConfig {
-        minSdkVersion Config.minSdk
-        targetSdkVersion Config.targetSdk
+        minSdkVersion AndroidConfig.minSdk
+        targetSdkVersion AndroidConfig.targetSdk
         applicationIdSuffix pkgNameSuffix
         versionCode extVersionCode
         versionName "$libVersion.$extVersionCode"
@@ -34,12 +34,21 @@ android {
         manifestPlaceholders = [
                 appName : "Tachiyomi: $extName",
                 extClass: extClass,
+                extFactory: project.ext.properties.getOrDefault("extFactory", ""),
                 nsfw: project.ext.properties.getOrDefault("containsNsfw", false) ? 1 : 0,
         ]
     }
 
     dependenciesInfo {
         includeInApk = false
+    }
+
+    buildFeatures {
+        // Disable unused AGP features
+        aidl false
+        renderScript false
+        resValues false
+        shaders false
     }
 
     compileOptions {
