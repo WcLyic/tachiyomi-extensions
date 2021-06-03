@@ -325,15 +325,16 @@ class Dmzj : ConfigurableSource, HttpSource() {
         if (response.request.url.toString().startsWith(v4apiUrl)) {
             val pb = ProtoBuf.decodeFromByteArray<ComicDetailResponse>(decryptProtobufData(responseBody))
             val mangaPBData = pb.Data
-            val testChapter = mangaPBData.Chapters[0]
-            for (j in mangaPBData.Chapters.indices) {
-                val chapterPBData = mangaPBData.Chapters[j]
-                val prefix = chapterPBData.Title
-                for (i in chapterPBData.Data.indices) {
-                    val chapter = chapterPBData.Data[i]
+            // v4api can contain multiple series of chapters.
+            if (mangaPBData.Chapters.isEmpty()) {
+                throw Exception("empty chapter list")
+            }
+            mangaPBData.Chapters.forEach { chapterList ->
+                for (i in chapterList.Data.indices) {
+                    val chapter = chapterList.Data[i]
                     ret.add(
                         SChapter.create().apply {
-                            name = "$prefix: ${chapter.ChapterTitle}"
+                            name = "${chapterList.Title}: ${chapter.ChapterTitle}"
                             date_upload = chapter.Updatetime * 1000
                             url = "${mangaPBData.Id}/${chapter.ChapterId}"
                         }
@@ -342,6 +343,7 @@ class Dmzj : ConfigurableSource, HttpSource() {
             }
         } else {
             // get chapter info from old api
+            // Old api may only contain one series of chapters
             val obj = JSONObject(responseBody)
             val chaptersList = obj.getJSONObject("data").getJSONArray("list")
             for (i in 0 until chaptersList.length()) {

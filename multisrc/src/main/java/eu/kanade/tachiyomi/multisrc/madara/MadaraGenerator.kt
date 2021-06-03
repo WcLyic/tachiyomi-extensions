@@ -19,6 +19,7 @@ class MadaraGenerator : ThemeSourceGenerator {
             SingleLang("AllPornComic", "https://allporncomic.com", "en", isNsfw = true),
             SingleLang("Aloalivn", "https://aloalivn.com", "en", overrideVersionCode = 2),
             SingleLang("AniMangaEs", "https://animangaes.com", "en", overrideVersionCode = 1),
+            SingleLang("Anisa Manga", "https://anisamanga.com", "tr"),
             SingleLang("Agent of Change Translations", "https://aoc.moe", "en", overrideVersionCode = 1),
             SingleLang("ApollComics", "https://apollcomics.xyz", "es"),
             SingleLang("Arang Scans", "https://arangscans.com", "en", overrideVersionCode = 3), // removed override
@@ -101,6 +102,7 @@ class MadaraGenerator : ThemeSourceGenerator {
             SingleLang("MangaBob", "https://mangabob.com", "en"),
             SingleLang("Manga Chill", "https://mangachill.com/", "en"),
             SingleLang("Manga Clash", "https://mangaclash.com", "en", overrideVersionCode = 1),
+            SingleLang("Manga Crab", "https://mangacrab.com", "es"),
             SingleLang("MangaCultivator", "https://mangacultivator.com", "en"),
             SingleLang("MangaDods", "https://www.mangadods.com", "en"),
             SingleLang("Manga Drop Out", "https://www.mangadropout.xyz", "id", isNsfw = true),
@@ -235,6 +237,7 @@ class MadaraGenerator : ThemeSourceGenerator {
             SingleLang("Wakascan", "https://wakascan.com", "fr"),
             SingleLang("War Queen Scan", "https://wqscan.com.br", "pt-BR", overrideVersionCode = 2),
             SingleLang("WebNovel", "https://webnovel.live", "en", className = "WebNovelLive", overrideVersionCode = 1),
+            SingleLang("Webtoon Hatti", "https://webtoonhatti.com/", "tr"),
             SingleLang("WebToonily", "https://webtoonily.com", "en"),
             SingleLang("WebtoonUK", "https://webtoon.uk", "en"),
             SingleLang("WebtoonXYZ", "https://www.webtoon.xyz", "en"),
