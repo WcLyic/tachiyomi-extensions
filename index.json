@@ -29,19 +29,19 @@
   {
     "name": "Tachiyomi: CopyManga",
     "pkg": "eu.kanade.tachiyomi.extension.zh.copymanga",
-    "apk": "tachiyomi-zh.copymanga-v1.2.8.apk",
+    "apk": "tachiyomi-zh.copymanga-v1.2.9.apk",
     "lang": "zh",
-    "code": 8,
-    "version": "1.2.8",
+    "code": 9,
+    "version": "1.2.9",
     "nsfw": 0
   },
   {
     "name": "Tachiyomi: Dmzj",
     "pkg": "eu.kanade.tachiyomi.extension.zh.dmzj",
-    "apk": "tachiyomi-zh.dmzj-v1.2.18.apk",
+    "apk": "tachiyomi-zh.dmzj-v1.2.19.apk",
     "lang": "zh",
-    "code": 18,
-    "version": "1.2.18",
+    "code": 19,
+    "version": "1.2.19",
     "nsfw": 0
   },
   {
