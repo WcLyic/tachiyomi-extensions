@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.extension.pt.tsukimangas
 
 import eu.kanade.tachiyomi.annotations.Nsfw
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
+import eu.kanade.tachiyomi.lib.ratelimit.SpecificHostRateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.model.Filter
@@ -14,16 +14,18 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import rx.Observable
 import uy.kohesive.injekt.injectLazy
+import java.io.IOException
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
-import java.util.concurrent.TimeUnit
 
 @Nsfw
 class TsukiMangas : HttpSource() {
@@ -37,7 +39,10 @@ class TsukiMangas : HttpSource() {
     override val supportsLatest = true
 
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
-        .addInterceptor(RateLimitInterceptor(1, 1, TimeUnit.SECONDS))
+        .addInterceptor(SpecificHostRateLimitInterceptor(baseUrl.toHttpUrl(), 1))
+        .addInterceptor(SpecificHostRateLimitInterceptor(CDN_1_URL, 1, period = 2))
+        .addInterceptor(SpecificHostRateLimitInterceptor(CDN_2_URL, 1, period = 2))
+        .addInterceptor(::tsukiPermissionIntercept)
         .build()
 
     override fun headersBuilder(): Headers.Builder = Headers.Builder()
@@ -49,7 +54,7 @@ class TsukiMangas : HttpSource() {
     private val json: Json by injectLazy()
 
     override fun popularMangaRequest(page: Int): Request {
-        return GET("$baseUrl/api/v2/mangas?page=$page&title=&filter=0", headers)
+        return GET("$baseUrl/api/v2/mangas?page=$page&title=&adult_content=false&filter=0", headers)
     }
 
     override fun popularMangaParse(response: Response): MangasPage {
@@ -63,8 +68,10 @@ class TsukiMangas : HttpSource() {
     }
 
     private fun popularMangaItemParse(manga: TsukiMangaDto) = SManga.create().apply {
+        val poster = manga.poster?.substringBefore("?")
+
         title = manga.title
-        thumbnail_url = baseUrl + "/imgs/" + manga.poster.substringBefore("?")
+        thumbnail_url = baseUrl + (if (poster.isNullOrEmpty()) EMPTY_COVER else "/imgs/$poster")
         url = "/obra/${manga.id}/${manga.url}"
     }
 
@@ -83,12 +90,18 @@ class TsukiMangas : HttpSource() {
     }
 
     private fun latestMangaItemParse(manga: TsukiMangaDto) = SManga.create().apply {
+        val poster = manga.poster?.substringBefore("?")
+
         title = manga.title
-        thumbnail_url = baseUrl + "/imgs/" + manga.poster.substringBefore("?")
+        thumbnail_url = baseUrl + (if (poster.isNullOrEmpty()) EMPTY_COVER else "/imgs/$poster")
         url = "/obra/${manga.id}/${manga.url}"
     }
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+        if (query.startsWith(PREFIX_ID_SEARCH) && query.matches(ID_SEARCH_PATTERN)) {
+            return mangaDetailsApiRequest(query.removePrefix(PREFIX_ID_SEARCH))
+        }
+
         val newHeaders = headersBuilder()
             .set("Referer", "$baseUrl/lista-completa")
             .build()
@@ -96,12 +109,22 @@ class TsukiMangas : HttpSource() {
         val url = "$baseUrl/api/v2/mangas?page=$page".toHttpUrlOrNull()!!.newBuilder()
         url.addQueryParameter("title", query)
 
-        // Genre filter must be the first.
+        // Some filters have to follow an order in the URL.
         filters.filterIsInstance<GenreFilter>().firstOrNull()?.state
             ?.filter { it.state }
             ?.forEach { url.addQueryParameter("genres[]", it.name) }
 
-        // Sort by filter must also be the first.
+        filters.filterIsInstance<AdultFilter>().firstOrNull()
+            ?.let {
+                if (it.state == Filter.TriState.STATE_INCLUDE) {
+                    url.addQueryParameter("adult_content", "1")
+                } else if (it.state == Filter.TriState.STATE_EXCLUDE) {
+                    url.addQueryParameter("adult_content", "false")
+                }
+
+                return@let null
+            }
+
         filters.filterIsInstance<SortByFilter>().firstOrNull()
             ?.let { filter ->
                 if (filter.state!!.index == 0) {
@@ -130,14 +153,6 @@ class TsukiMangas : HttpSource() {
                         url.addQueryParameter("status", (filter.state - 1).toString())
                     }
                 }
-
-                is AdultFilter -> {
-                    if (filter.state == Filter.TriState.STATE_INCLUDE) {
-                        url.addQueryParameter("adult_content", "1")
-                    } else if (filter.state == Filter.TriState.STATE_EXCLUDE) {
-                        url.addQueryParameter("adult_content", "false")
-                    }
-                }
             }
         }
 
@@ -145,6 +160,12 @@ class TsukiMangas : HttpSource() {
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
+        if (response.request.url.toString().contains("/mangas/")) {
+            val manga = mangaDetailsParse(response)
+
+            return MangasPage(listOf(manga), hasNextPage = false)
+        }
+
         val result = json.decodeFromString<TsukiPaginatedDto>(response.body!!.string())
 
         val searchResults = result.data.map(::searchMangaItemParse)
@@ -155,28 +176,26 @@ class TsukiMangas : HttpSource() {
     }
 
     private fun searchMangaItemParse(manga: TsukiMangaDto) = SManga.create().apply {
+        val poster = manga.poster?.substringBefore("?")
+
         title = manga.title
-        thumbnail_url = baseUrl + "/imgs/" + manga.poster.substringBefore("?")
+        thumbnail_url = baseUrl + (if (poster.isNullOrEmpty()) EMPTY_COVER else "/imgs/$poster")
         url = "/obra/${manga.id}/${manga.url}"
     }
 
     // Workaround to allow "Open in browser" use the real URL.
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return client.newCall(mangaDetailsApiRequest(manga))
+        return client.newCall(mangaDetailsApiRequest(manga.url))
             .asObservableSuccess()
             .map { response ->
                 mangaDetailsParse(response).apply { initialized = true }
             }
     }
 
-    private fun mangaDetailsApiRequest(manga: SManga): Request {
-        val newHeaders = headersBuilder()
-            .set("Referer", baseUrl + manga.url)
-            .build()
+    private fun mangaDetailsApiRequest(mangaUrl: String): Request {
+        val mangaId = mangaUrl.substringAfter("obra/").substringBefore("/")
 
-        val mangaId = manga.url.substringAfter("obra/").substringBefore("/")
-
-        return GET("$baseUrl/api/v2/mangas/$mangaId", newHeaders)
+        return GET("$baseUrl/api/v2/mangas/$mangaId", headers)
     }
 
     override fun mangaDetailsRequest(manga: SManga): Request {
@@ -189,14 +208,16 @@ class TsukiMangas : HttpSource() {
 
     override fun mangaDetailsParse(response: Response): SManga = SManga.create().apply {
         val mangaDto = json.decodeFromString<TsukiMangaDto>(response.body!!.string())
+        val poster = mangaDto.poster?.substringBefore("?")
 
         title = mangaDto.title
-        thumbnail_url = baseUrl + "/imgs/" + mangaDto.poster.substringBefore("?")
+        thumbnail_url = baseUrl + (if (poster.isNullOrEmpty()) EMPTY_COVER else "/imgs/$poster")
         description = mangaDto.synopsis.orEmpty()
         status = mangaDto.status.orEmpty().toStatus()
         author = mangaDto.author.orEmpty()
         artist = mangaDto.artist.orEmpty()
         genre = mangaDto.genres.joinToString { it.genre }
+        url = "/obra/${mangaDto.id}/${mangaDto.url}"
     }
 
     override fun chapterListRequest(manga: SManga): Request {
@@ -274,6 +295,17 @@ class TsukiMangas : HttpSource() {
         return GET(page.imageUrl!!, newHeaders)
     }
 
+    private fun tsukiPermissionIntercept(chain: Interceptor.Chain): Response {
+        val response = chain.proceed(chain.request())
+
+        if (response.code == 403) {
+            response.close()
+            throw IOException(UA_DISABLED_MESSAGE)
+        }
+
+        return response
+    }
+
     private class Genre(name: String) : Filter.CheckBox(name)
 
     private class DemographyFilter(demographies: List<String>) : Filter.Select<String>("Demografia", demographies.toTypedArray())
@@ -282,7 +314,7 @@ class TsukiMangas : HttpSource() {
 
     private class StatusFilter(statusList: List<String>) : Filter.Select<String>("Status", statusList.toTypedArray())
 
-    private class AdultFilter : Filter.TriState("Conteúdo adulto")
+    private class AdultFilter : Filter.TriState("Conteúdo adulto", STATE_EXCLUDE)
 
     private class SortByFilter : Filter.Sort("Ordenar por", arrayOf("Visualizações", "Nota"), Selection(0, false))
 
@@ -424,8 +456,19 @@ class TsukiMangas : HttpSource() {
         private const val ACCEPT_IMAGE = "image/avif,image/webp,image/apng,image/*,*/*;q=0.8"
         private const val ACCEPT_LANGUAGE = "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7,es;q=0.6,gl;q=0.5"
         // By request of site owner. Detailed at Issue #4912 (in Portuguese).
-        private val USER_AGENT = "Tachiyomi " + System.getProperty("http.agent")
+        private val USER_AGENT = "Tachiyomi " + System.getProperty("http.agent")!!
+
+        private val CDN_1_URL = "https://cdn1.tsukimangas.com".toHttpUrl()
+        private val CDN_2_URL = "https://cdn2.tsukimangas.com".toHttpUrl()
+
+        private const val UA_DISABLED_MESSAGE = "Permissão de acesso da extensão desativada. " +
+            "Aguarde a reativação pelo site para continuar utilizando."
+
+        private const val EMPTY_COVER = "/ext/errorcapa.jpg"
 
         private val DATE_FORMATTER by lazy { SimpleDateFormat("yyyy-MM-dd", Locale.ENGLISH) }
+
+        const val PREFIX_ID_SEARCH = "id:"
+        private val ID_SEARCH_PATTERN = "^id:(\\d+)$".toRegex()
     }
 }

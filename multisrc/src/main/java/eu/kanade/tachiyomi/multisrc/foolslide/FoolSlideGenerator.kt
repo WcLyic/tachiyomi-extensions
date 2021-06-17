@@ -10,7 +10,7 @@ class FoolSlideGenerator : ThemeSourceGenerator {
 
     override val themeClass = "FoolSlide"
 
-    override val baseVersionCode: Int = 1
+    override val baseVersionCode: Int = 2
 
     override val sources = listOf(
         SingleLang("The Cat Scans", "https://reader2.thecatscans.com/", "en"),
@@ -34,6 +34,7 @@ class FoolSlideGenerator : ThemeSourceGenerator {
         SingleLang("Kirishima Fansub", "https://www.kirishimafansub.net", "es"),
         SingleLang("Baixar Hentai", "https://leitura.baixarhentai.net", "pt-BR", isNsfw = true, overrideVersionCode = 2),
         MultiLang("HNI-Scantrad", "https://hni-scantrad.com", listOf("fr", "en"), className = "HNIScantradFactory", pkgName = "hniscantrad", overrideVersionCode = 1),
+        SingleLang("QuegnaReader", "http://pignaquegna.altervista.org", "it"),
         SingleLang("The Phoenix Scans", "https://www.phoenixscans.com", "it", className = "PhoenixScans"),
         SingleLang("GTO The Great Site", "https://www.gtothegreatsite.net", "it", className = "GTO"),
         SingleLang("NIFTeam", "http://read-nifteam.info", "it"),
