@@ -11,10 +11,10 @@
   {
     "name": "Tachiyomi: BH3",
     "pkg": "eu.kanade.tachiyomi.extension.zh.bh3",
-    "apk": "tachiyomi-zh.bh3-v1.2.2.apk",
+    "apk": "tachiyomi-zh.bh3-v1.2.3.apk",
     "lang": "zh",
-    "code": 2,
-    "version": "1.2.2",
+    "code": 3,
+    "version": "1.2.3",
     "nsfw": 0
   },
   {
@@ -38,10 +38,10 @@
   {
     "name": "Tachiyomi: Dmzj",
     "pkg": "eu.kanade.tachiyomi.extension.zh.dmzj",
-    "apk": "tachiyomi-zh.dmzj-v1.2.19.apk",
+    "apk": "tachiyomi-zh.dmzj-v1.2.20.apk",
     "lang": "zh",
-    "code": 19,
-    "version": "1.2.19",
+    "code": 20,
+    "version": "1.2.20",
     "nsfw": 0
   },
   {
@@ -74,10 +74,10 @@
   {
     "name": "Tachiyomi: Jinmantiantang",
     "pkg": "eu.kanade.tachiyomi.extension.zh.jinmantiantang",
-    "apk": "tachiyomi-zh.jinmantiantang-v1.2.12.apk",
+    "apk": "tachiyomi-zh.jinmantiantang-v1.2.13.apk",
     "lang": "zh",
-    "code": 12,
-    "version": "1.2.12",
+    "code": 13,
+    "version": "1.2.13",
     "nsfw": 1
   },
   {
@@ -119,10 +119,10 @@
   {
     "name": "Tachiyomi: ManHuaGui",
     "pkg": "eu.kanade.tachiyomi.extension.zh.manhuagui",
-    "apk": "tachiyomi-zh.manhuagui-v1.2.8.apk",
+    "apk": "tachiyomi-zh.manhuagui-v1.2.9.apk",
     "lang": "zh",
-    "code": 8,
-    "version": "1.2.8",
+    "code": 9,
+    "version": "1.2.9",
     "nsfw": 0
   },
   {
@@ -146,19 +146,19 @@
   {
     "name": "Tachiyomi: Pufei",
     "pkg": "eu.kanade.tachiyomi.extension.zh.pufei",
-    "apk": "tachiyomi-zh.pufei-v1.2.6.apk",
+    "apk": "tachiyomi-zh.pufei-v1.2.7.apk",
     "lang": "zh",
-    "code": 6,
-    "version": "1.2.6",
+    "code": 7,
+    "version": "1.2.7",
     "nsfw": 0
   },
   {
     "name": "Tachiyomi: Qimiaomh",
     "pkg": "eu.kanade.tachiyomi.extension.zh.qimiaomh",
-    "apk": "tachiyomi-zh.qimiaomh-v1.2.1.apk",
+    "apk": "tachiyomi-zh.qimiaomh-v1.2.2.apk",
     "lang": "zh",
-    "code": 1,
-    "version": "1.2.1",
+    "code": 2,
+    "version": "1.2.2",
     "nsfw": 0
   },
   {
