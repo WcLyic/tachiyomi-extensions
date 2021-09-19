@@ -43,8 +43,8 @@ class CopyManga : ConfigurableSource, HttpSource() {
     val replaceToMirror2 = Regex("1767566263\\.rsc\\.cdn77\\.org")
     val replaceToMirror = Regex("1025857477\\.rsc\\.cdn77\\.org")
 
-    private val CONNECT_PERMITS = 10
-    private val CONNECT_PERIOD = 2L
+    private val CONNECT_PERMITS = 20
+    private val CONNECT_PERIOD = 1L
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -253,6 +253,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         .set("source", "copyApp")
         .set("version", "1.1.6")
         .set("region", if (preferences.getBoolean(CHANGE_CDN_OVERSEAS, false)) "0" else "1")
+        .set("webp", if (preferences.getBoolean(CHANGE_WEBP_OPTION, false)) "1" else "0")
         .set("authorization", "Token")
 
     // Unused, we can get image urls directly from the chapter page
@@ -393,12 +394,29 @@ class CopyManga : ConfigurableSource, HttpSource() {
                 }
             }
         }
+        val webpPreference = androidx.preference.CheckBoxPreference(screen.context).apply {
+            key = CHANGE_WEBP_OPTION
+            title = "加载webp格式的图片"
+            summary = "加载webp格式的图片，推荐打开此选项，体积小加载更快（关闭时加载jpeg格式图片）"
+
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val setting = preferences.edit().putBoolean(CHANGE_WEBP_OPTION, newValue as Boolean).commit()
+                    setting
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }
         screen.addPreference(zhPreference)
         screen.addPreference(cdnPreference)
+        screen.addPreference(webpPreference)
     }
 
     companion object {
         private const val SHOW_Simplified_Chinese_TITLE_PREF = "showSCTitle"
         private const val CHANGE_CDN_OVERSEAS = "changeCDN"
+        private const val CHANGE_WEBP_OPTION = "changeWebp"
     }
 }
