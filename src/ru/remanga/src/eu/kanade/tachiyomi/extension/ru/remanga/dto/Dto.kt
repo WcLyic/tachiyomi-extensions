@@ -1,7 +1,7 @@
 import kotlinx.serialization.Serializable
 
 @Serializable
-data class GenresDto(
+data class TagsDto(
     val id: Int,
     val name: String
 )
@@ -25,8 +25,6 @@ data class LibraryDto(
     val en_name: String,
     val rus_name: String,
     val dir: String,
-//    val issue_year: Int,
-    val genres: List<GenresDto> = emptyList(),
     val img: ImgDto
 )
 
@@ -44,10 +42,11 @@ data class MangaDetDto(
     val another_name: String,
     val dir: String,
     val description: String,
-    val issue_year: Int,
+    val issue_year: Int?,
     val img: ImgDto,
-    val type: GenresDto,
-    val genres: List<GenresDto>,
+    val type: TagsDto,
+    val genres: List<TagsDto>,
+    val categories: List<TagsDto>,
     val branches: List<BranchesDto>,
     val status: StatusDto,
     val avg_rating: String,
@@ -64,17 +63,13 @@ data class PropsDto(
 
 @Serializable
 data class PageWrapperDto<T>(
-    val msg: String,
     val content: List<T>,
-    val props: PropsDto,
-//    val last: Boolean
+    val props: PropsDto
 )
 
 @Serializable
 data class SeriesWrapperDto<T>(
-    val msg: String,
-    val content: T,
-//    val props: PropsDto
+    val content: T
 )
 
 @Serializable
@@ -99,8 +94,7 @@ data class PagesDto(
     val id: Int,
     val height: Int,
     val link: String,
-    val page: Int,
-    val count_comments: Int
+    val page: Int
 )
 
 @Serializable
@@ -109,19 +103,11 @@ data class PageDto(
 )
 
 @Serializable
+data class ChunksPageDto(
+    val pages: List<List<PagesDto>>
+)
+
+@Serializable
 data class UserDto(
     val access_token: String
-)
-
-@Serializable
-data class PaidPagesDto(
-    val id: Long,
-    val link: String,
-    val height: Int,
-    val page: Int
-)
-
-@Serializable
-data class PaidPageDto(
-    val pages: List<List<PaidPagesDto>>
 )

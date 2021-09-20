@@ -32,7 +32,7 @@ class MMRCMSSources {
                 override val overrideVersionCode: Int = 0,
             ) : SourceData()
         }
-        val version: Int = 3
+        val version: Int = 4
         val sourceList: List<SourceData.Single> = listOf(
             SourceData.Single("مانجا اون لاين", "https://onma.me", "ar", className = "onma"),
             SourceData.Single("Read Comics Online", "https://readcomicsonline.ru", "en"),
@@ -57,24 +57,24 @@ class MMRCMSSources {
             SourceData.Single("Komik Manga", "https://adm.komikmanga.com", "id"),
             SourceData.Single("Mangazuki Raws", "https://raws.mangazuki.co", "ko"),
             SourceData.Single("Mangazuki", "https://mangazuki.co", "en"),
-            SourceData.Single("Remangas", "https://remangas.top", "pt-BR", overrideVersionCode = 1),
-            SourceData.Single("AnimaRegia", "https://animaregia.net", "pt-BR", overrideVersionCode = 1),
+            SourceData.Single("Remangas", "https://remangas.top", "pt-BR", overrideVersionCode = 2),
+            SourceData.Single("AnimaRegia", "https://animaregia.net", "pt-BR", overrideVersionCode = 2),
             SourceData.Single("MangaVadisi", "http://manga-v2.mangavadisi.org", "tr"),
             SourceData.Single("MangaID", "https://mangaid.click", "id"),
             SourceData.Single("Jpmangas", "https://jpmangas.co", "fr"),
             SourceData.Single("Op-VF", "https://www.op-vf.com", "fr", className = "OpVF"),
             SourceData.Single("FR Scan", "https://frscan.cc", "fr"),
-            SourceData.Single("Gekkou Scans", "https://leitor.gekkouscans.com.br", "pt-BR", isNsfw = true, pkgName = "gekkouscan", overrideVersionCode = 1),
-            SourceData.Single("Ama Scans", "https://amascan.com", "pt-BR", isNsfw = true),
+            SourceData.Single("Ama Scans", "https://amascan.com", "pt-BR", isNsfw = true, overrideVersionCode = 1),
+            SourceData.Single("Gekkou Scans", "https://gekkouscans.com.br", "pt-BR", isNsfw = true, pkgName = "gekkouscan", overrideVersionCode = 8),
             // NOTE: THIS SOURCE CONTAINS A CUSTOM LANGUAGE SYSTEM (which will be ignored)!
             SourceData.Single("HentaiShark", "https://www.hentaishark.com", "all", isNsfw = true),
-            //MultiLang("HentaiShark", "https://www.hentaishark.com", listOf("en", "ja", "zh", "de", "nl", "ko", "cz", "eo", "mn", "ar", "sk", "la", "ua", "ceb", "tl", "fi", "bg", "tr"), isNsfw = true, className = "HentaiSharkFactory"),
+            // MultiLang("HentaiShark", "https://www.hentaishark.com", listOf("en", "ja", "zh", "de", "nl", "ko", "cz", "eo", "mn", "ar", "sk", "la", "ua", "ceb", "tl", "fi", "bg", "tr"), isNsfw = true, className = "HentaiSharkFactory"),
         )
     }
 }
 
-//SingleLang("Mangás Yuri", "https://mangasyuri.net", "pt-BR", className = "MangasYuri"), override val id: Long = 6456162511058446409
-//SingleLang("FR Scan", "https://www.frscan.me", "fr"),
+// SingleLang("Mangás Yuri", "https://mangasyuri.net", "pt-BR", className = "MangasYuri"), override val id: Long = 6456162511058446409
+// SingleLang("FR Scan", "https://www.frscan.me", "fr"),
 // Reference from old Factory Source
 // Changed CMS
 // SourceData("es", "Tumangaonline.co", "http://tumangaonline.com"),

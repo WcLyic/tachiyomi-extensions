@@ -10,14 +10,18 @@ object MDConstants {
         Regex("[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}")
 
     const val mangaLimit = 20
+    const val latestChapterLimit = 100
+
+    const val manga = "manga"
     const val coverArt = "cover_art"
     const val scanlator = "scanlation_group"
     const val author = "author"
     const val artist = "artist"
-    const val cdnUrl = "https://uploads.mangadex.org"
 
+    const val cdnUrl = "https://uploads.mangadex.org"
     const val apiUrl = "https://api.mangadex.org"
     const val apiMangaUrl = "$apiUrl/manga"
+    const val apiChapterUrl = "$apiUrl/chapter"
     const val atHomePostUrl = "https://api.mangadex.network/report"
     val whitespaceRegex = "\\s".toRegex()
 
@@ -27,6 +31,19 @@ object MDConstants {
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
 
     const val prefixIdSearch = "id:"
+    const val prefixChSearch = "ch:"
+
+    const val coverQualityPref = "thumbnailQuality"
+
+    fun getCoverQualityPreferenceKey(dexLang: String): String {
+        return "${coverQualityPref}_$dexLang"
+    }
+
+    fun getCoverQualityPreferenceEntries() = arrayOf("Original", "Medium", "Low")
+
+    fun getCoverQualityPreferenceEntryValues() = arrayOf("", ".512.jpg", ".256.jpg")
+
+    fun getCoverQualityPreferenceDefaultValue() = getCoverQualityPreferenceEntryValues()[0]
 
     const val dataSaverPref = "dataSaverV5"
 
@@ -62,5 +79,23 @@ object MDConstants {
 
     fun getContentRatingPornographicPrefKey(dexLang: String): String {
         return "${contentRatingPornographicPref}_$dexLang"
+    }
+
+    private const val originalLanguageJapanesePref = "originalLanguageJapanese"
+
+    fun getOriginalLanguageJapanesePref(dexLang: String): String {
+        return "${originalLanguageJapanesePref}_$dexLang"
+    }
+
+    private const val originalLanguageChinesePref = "originalLanguageChinese"
+
+    fun getOriginalLanguageChinesePref(dexLang: String): String {
+        return "${originalLanguageChinesePref}_$dexLang"
+    }
+
+    private const val originalLanguageKoreanPref = "originalLanguageKorean"
+
+    fun getOriginalLanguageKoreanPref(dexLang: String): String {
+        return "${originalLanguageKoreanPref}_$dexLang"
     }
 }

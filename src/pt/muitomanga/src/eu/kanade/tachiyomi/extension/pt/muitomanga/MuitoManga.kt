@@ -23,7 +23,6 @@ import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import uy.kohesive.injekt.injectLazy
-import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
@@ -41,7 +40,7 @@ class MuitoManga : ParsedHttpSource() {
     override val supportsLatest = true
 
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
-        .addInterceptor(RateLimitInterceptor(1, 1, TimeUnit.SECONDS))
+        .addInterceptor(RateLimitInterceptor(1, 2, TimeUnit.SECONDS))
         .addInterceptor(::directoryCacheIntercept)
         .build()
 
@@ -116,11 +115,13 @@ class MuitoManga : ParsedHttpSource() {
 
     override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
         val infoElement = document.select("div.content_post").first()!!
+        val isFinished = infoElement.select("span.series_autor2 > span.series_autor").firstOrNull()
 
         title = document.select("div.content div.widget-title h1").first()!!.text()
-        author = infoElement.select("span.series_autor2").first()!!.text()
+        author = infoElement.select("span.series_autor2").first()!!.ownText()
         genre = infoElement.select("ul.lancamento-list a").joinToString { it.text() }
         description = document.select("ul.lancamento-list ~ p").text().trim()
+        status = if (isFinished != null) SManga.COMPLETED else SManga.ONGOING
         thumbnail_url = infoElement.select("div.capaMangaInfo img").first()!!.attr("data-src")
     }
 
@@ -129,7 +130,7 @@ class MuitoManga : ParsedHttpSource() {
     override fun chapterFromElement(element: Element): SChapter = SChapter.create().apply {
         name = element.select("a").first()!!.text()
         date_upload = element.select("small[title]").first()!!.text().toDate()
-        scanlator = element.select("scanlator2 a").joinToString { it.text().trim() }
+        scanlator = element.select("div.scanlator2 a").joinToString { it.text().trim() }
         setUrlWithoutDomain(element.select("a").first()!!.attr("abs:href"))
     }
 
@@ -202,11 +203,8 @@ class MuitoManga : ParsedHttpSource() {
     }
 
     private fun String.toDate(): Long {
-        return try {
-            DATE_FORMATTER.parse(this)?.time ?: 0L
-        } catch (e: ParseException) {
-            0L
-        }
+        return runCatching { DATE_FORMATTER.parse(this)?.time }
+            .getOrNull() ?: 0L
     }
 
     companion object {

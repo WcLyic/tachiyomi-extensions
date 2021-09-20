@@ -10,22 +10,122 @@ jobs:
     name: Validate Gradle Wrapper
     runs-on: ubuntu-latest
     steps:
+      - name: Cancel previous runs
+        uses: styfle/cancel-workflow-action@0.9.1
+        with:
+          access_token: ${{ github.token }}
+          all_but_latest: true
+
       - name: Clone repo
         uses: actions/checkout@v2
 
       - name: Validate Gradle Wrapper
         uses: gradle/wrapper-validation-action@v1
 
-  build:
-    name: Build extension repo
+  build_multisrc:
+    name: Build multisrc modules
     needs: check_wrapper
-    if: "!startsWith(github.event.head_commit.message, '[SKIP CI]')"
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang: [zh]
+    steps:
+      - name: Checkout master branch
+        uses: actions/checkout@v2
+        with:
+          ref: my
+
+      - name: Set up JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+
+      - name: Copy CI gradle.properties
+        run: |
+          mkdir -p ~/.gradle
+          cp .github/runner-files/ci-gradle.properties ~/.gradle/gradle.properties
+
+      - name: Generate sources from the multi-source library
+        uses: gradle/gradle-command-action@v1
+        env:
+          CI_MULTISRC: "true"
+        with:
+          arguments: :multisrc:generateExtensions
+          distributions-cache-enabled: true
+          dependencies-cache-enabled: true
+          configuration-cache-enabled: true
+
+      - name: Build "${{ matrix.lang }}" extensions
+        uses: gradle/gradle-command-action@v1
+        env:
+          CI_MULTISRC: "true"
+          CI_MATRIX_LANG: ${{ matrix.lang }}
+        with:
+          arguments: assembleRelease
+          distributions-cache-enabled: true
+          dependencies-cache-enabled: true
+          configuration-cache-enabled: true
+
+      - name: Upload "${{ matrix.lang }}" APKs
+        uses: actions/upload-artifact@v2
+        with:
+          name: "multisrc-${{ matrix.lang }}-apks"
+          path: "**/*.apk"
+          retention-days: 1
+
+  build_individual:
+    name: Build individual modules
+    needs: check_wrapper
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        lang: [zh]
+    steps:
+      - name: Checkout master branch
+        uses: actions/checkout@v2
+        with:
+          ref: my
+
+      - name: Set up JDK
+        uses: actions/setup-java@v1
+        with:
+          java-version: 1.8
+
+      - name: Copy CI gradle.properties
+        run: |
+          mkdir -p ~/.gradle
+          cp .github/runner-files/ci-gradle.properties ~/.gradle/gradle.properties
+
+      - name: Build "${{ matrix.lang }}" extensions
+        uses: gradle/gradle-command-action@v1
+        env:
+          CI_MULTISRC: "false"
+          CI_MATRIX_LANG: ${{ matrix.lang }}
+        with:
+          arguments: assembleRelease
+          distributions-cache-enabled: true
+          dependencies-cache-enabled: true
+          configuration-cache-enabled: true
+
+      - name: Upload "${{ matrix.lang }}" APKs
+        uses: actions/upload-artifact@v2
+        with:
+          name: "individual-${{ matrix.lang }}-apks"
+          path: "**/*.apk"
+          retention-days: 1
+
+  publish_repo:
+    name: Publish repo
+    needs:
+      - build_multisrc
+      - build_individual
+    if: "github.repository == 'WcLyic/tachiyomi-extensions'"
     runs-on: ubuntu-latest
     steps:
-      - name: Cancel previous runs
-        uses: styfle/cancel-workflow-action@0.8.0
+      - name: Download APK artifacts
+        uses: actions/download-artifact@v2
         with:
-          access_token: ${{ github.token }}
+          path: ~/apk-artifacts
 
       - name: Checkout master branch
         uses: actions/checkout@v2
@@ -33,40 +133,10 @@ jobs:
           ref: my
           path: master
 
-      - name: Set up JDK 1.8
+      - name: Set up JDK
         uses: actions/setup-java@v1
         with:
-          java-version: 1.8
-
-      - name: Copy CI gradle.properties
-        run: |
-          cd master
-          mkdir -p ~/.gradle
-          cp .github/runner-files/ci-gradle.properties ~/.gradle/gradle.properties
-
-#      - name: Generate sources from the multi-source library
-#        uses: eskatos/gradle-command-action@v1
-#        env:
-#          CI_PUSH: "true"
-#        with:
-#          build-root-directory: master
-#          wrapper-directory: master
-#          arguments: :multisrc:generateExtensions
-#          wrapper-cache-enabled: true
-#          dependencies-cache-enabled: true
-#          configuration-cache-enabled: true
-
-      - name: Build extensions
-        uses: eskatos/gradle-command-action@v1
-        env:
-          CI_PUSH: "true"
-        with:
-          build-root-directory: master
-          wrapper-directory: master
-          arguments: assembleRelease
-          wrapper-cache-enabled: true
-          dependencies-cache-enabled: true
-          configuration-cache-enabled: true
+          java-version: 11
 
       - name: Sign APKs
         if: github.repository == 'WcLyic/tachiyomi-extensions'
@@ -77,6 +147,13 @@ jobs:
             ${{ secrets.ALIAS }} \
             ${{ secrets.KEY_STORE_PASSWORD }} \
             ${{ secrets.KEY_PASSWORD }}
+
+      # - name: Run inspector
+      #   run: |
+      #     cd master
+      #     INSPECTOR_LINK="$(curl -s "https://api.github.com/repos/tachiyomiorg/tachiyomi-extensions-inspector/releases/latest" | jq -r '.assets[0].browser_download_url')"
+      #     curl -L "$INSPECTOR_LINK" -o ./Inspector.jar
+      #     java -jar ./Inspector.jar "apk" "output.json" "tmp"
 
       - name: Create repo artifacts
         if: github.repository == 'WcLyic/tachiyomi-extensions'

@@ -1,3 +1,37 @@
+## 1.2.31
+
+Minimum Komga version required: `0.113.0`
+
+### Refactor
+
+* replace Gson with kotlinx.serialization 
+
+## 1.2.30
+
+Minimum Komga version required: `0.113.0`
+
+### Features
+
+* display read list summary
+* display aggregated tags on series
+* search series by book tags
+
+## 1.2.29
+
+Minimum Komga version required: `0.97.0`
+
+### Features
+
+* filter deleted series and books
+
+## 1.2.28
+
+Minimum Komga version required: `0.97.0`
+
+### Fix
+
+* incorrect User Agent
+
 ## 1.2.27
 
 Minimum Komga version required: `0.97.0`

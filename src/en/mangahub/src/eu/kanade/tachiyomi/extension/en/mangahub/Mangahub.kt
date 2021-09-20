@@ -88,6 +88,17 @@ class Mangahub : ParsedHttpSource() {
             }
         }
 
+        // add alternative name to manga description
+        val altName = "Alternative Name: "
+        document.select("h1 small").firstOrNull()?.ownText()?.let {
+            if (it.isBlank().not()) {
+                manga.description = when {
+                    manga.description.isNullOrBlank() -> altName + it
+                    else -> manga.description + "\n\n$altName" + it
+                }
+            }
+        }
+
         return manga
     }
 

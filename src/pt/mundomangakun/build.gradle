@@ -6,8 +6,8 @@ ext {
     extName = 'Mundo Mangá-Kun'
     pkgNameSuffix = 'pt.mundomangakun'
     extClass = '.MundoMangaKun'
-    extVersionCode = 3
-    libVersion = '1.2'
+    extVersionCode = 6
+    containsNsfw = true
 }
 
 dependencies {

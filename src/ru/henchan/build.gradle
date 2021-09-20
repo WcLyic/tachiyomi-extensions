@@ -5,8 +5,7 @@ ext {
     extName = 'Henchan'
     pkgNameSuffix = 'ru.henchan'
     extClass = '.Henchan'
-    extVersionCode = 21
-    libVersion = '1.2'
+    extVersionCode = 26
     containsNsfw = true
 }
 

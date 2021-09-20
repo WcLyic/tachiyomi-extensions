@@ -5,8 +5,7 @@ ext {
     extName = 'IMHentai'
     pkgNameSuffix = 'all.imhentai'
     extClass = '.IMHentaiFactory'
-    extVersionCode = 2
-    libVersion = '1.2'
+    extVersionCode = 3
     containsNsfw = true
 }
 

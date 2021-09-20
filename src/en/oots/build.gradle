@@ -1,0 +1,12 @@
+apply plugin: 'com.android.application'
+apply plugin: 'kotlin-android'
+
+ext {
+    extName = 'oots'
+    pkgNameSuffix = 'en.oots'
+    extClass = '.oots'
+    extVersionCode = 1
+    containsNsfw = false
+}
+
+apply from: "$rootDir/common.gradle"

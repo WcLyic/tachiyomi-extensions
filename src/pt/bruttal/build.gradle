@@ -6,8 +6,7 @@ ext {
     extName = 'Bruttal'
     pkgNameSuffix = 'pt.bruttal'
     extClass = '.Bruttal'
-    extVersionCode = 3
-    libVersion = '1.2'
+    extVersionCode = 4
 }
 
 dependencies {

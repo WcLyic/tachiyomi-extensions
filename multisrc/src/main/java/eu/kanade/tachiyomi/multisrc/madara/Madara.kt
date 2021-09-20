@@ -11,17 +11,20 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.CacheControl
 import okhttp3.FormBody
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
-import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import uy.kohesive.injekt.injectLazy
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Calendar
@@ -46,6 +49,8 @@ abstract class Madara(
 
     // helps with cloudflare for some sources, makes it worse for others; override with empty string if the latter is true
     protected open val userAgentRandomizer = " ${Random.nextInt().absoluteValue}"
+
+    protected open val json: Json by injectLazy()
 
     override fun headersBuilder(): Headers.Builder = Headers.Builder()
         .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/78.0$userAgentRandomizer")
@@ -119,7 +124,7 @@ abstract class Madara(
 
     override fun popularMangaParse(response: Response): MangasPage {
         if (genresList == null)
-            genresList = parseGenres(client.newCall(searchMangaRequest(1,"genre", getFilterList())).execute().asJsoup())
+            genresList = parseGenres(client.newCall(searchMangaRequest(1, "genre", getFilterList())).execute().asJsoup())
         return super.popularMangaParse(response)
     }
 
@@ -128,9 +133,9 @@ abstract class Madara(
     open val mangaSubString = "manga"
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        if (query.startsWith(URL_SEARCH_PREFIX)){
+        if (query.startsWith(URL_SEARCH_PREFIX)) {
             val mangaUrl = "$baseUrl/$mangaSubString/${query.substringAfter(URL_SEARCH_PREFIX)}"
-            return client.newCall(GET("$baseUrl/$mangaSubString/${query.substringAfter(URL_SEARCH_PREFIX)}", headers))
+            return client.newCall(GET(mangaUrl, headers))
                 .asObservable().map { response ->
                     MangasPage(listOf(mangaDetailsParse(response.asJsoup()).apply { url = "/$mangaSubString/${query.substringAfter(URL_SEARCH_PREFIX)}/" }), false)
                 }
@@ -317,11 +322,15 @@ abstract class Madara(
             select("div.post-title h3").first()?.let {
                 manga.title = it.ownText()
             }
-            select("div.author-content").first()?.let {
-                if (it.text().notUpdating()) manga.author = it.text()
+            select("div.author-content > a").eachText().filter {
+                it.notUpdating()
+            }.joinToString().takeIf { it.isNotBlank() }?.let {
+                manga.author = it
             }
-            select("div.artist-content").first()?.let {
-                if (it.text().notUpdating()) manga.artist = it.text()
+            select("div.artist-content > a").eachText().filter {
+                it.notUpdating()
+            }.joinToString().takeIf { it.isNotBlank() }?.let {
+                manga.artist = it
             }
             select("div.description-summary div.summary__content").let {
                 if (it.select("p").text().isNotEmpty()) {
@@ -366,10 +375,10 @@ abstract class Madara(
 
             // add alternative name to manga description
             document.select(altNameSelector).firstOrNull()?.ownText()?.let {
-                if (it.isEmpty().not() && it.notUpdating()) {
-                    manga.description += when {
-                        manga.description.isNullOrEmpty() -> altName + it
-                        else -> "\n\n$altName" + it
+                if (it.isBlank().not() && it.notUpdating()) {
+                    manga.description = when {
+                        manga.description.isNullOrBlank() -> altName + it
+                        else -> manga.description + "\n\n$altName" + it
                     }
                 }
             }
@@ -396,25 +405,57 @@ abstract class Madara(
         }
     }
 
-    protected fun getXhrChapters(mangaId: String): Document {
-        val xhrHeaders = headersBuilder().add("Content-Type: application/x-www-form-urlencoded; charset=UTF-8")
-            .add("Referer", baseUrl)
+    /**
+     * Set it to true if the source uses the new AJAX endpoint to
+     * fetch the manga chapters instead of the old admin-ajax.php one.
+     */
+    protected open val useNewChapterEndpoint: Boolean = false
+
+    protected open fun oldXhrChaptersRequest(mangaId: String): Request {
+        val form = FormBody.Builder()
+            .add("action", "manga_get_chapters")
+            .add("manga", mangaId)
             .build()
-        val body = "action=manga_get_chapters&manga=$mangaId".toRequestBody(null)
-        return client.newCall(POST("$baseUrl/wp-admin/admin-ajax.php", xhrHeaders, body)).execute().asJsoup()
+
+        val xhrHeaders = headersBuilder()
+            .add("Content-Length", form.contentLength().toString())
+            .add("Content-Type", form.contentType().toString())
+            .add("Referer", baseUrl)
+            .add("X-Requested-With", "XMLHttpRequest")
+            .build()
+
+        return POST("$baseUrl/wp-admin/admin-ajax.php", xhrHeaders, form)
+    }
+
+    protected open fun xhrChaptersRequest(mangaUrl: String): Request {
+        val xhrHeaders = headersBuilder()
+            .add("Referer", baseUrl)
+            .add("X-Requested-With", "XMLHttpRequest")
+            .build()
+
+        return POST("$mangaUrl/ajax/chapters", xhrHeaders)
     }
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
-        val dataIdSelector = "div[id^=manga-chapters-holder]"
+        val chaptersWrapper = document.select("div[id^=manga-chapters-holder]")
 
-        return document.select(chapterListSelector())
-            .let { elements ->
-                if (elements.isEmpty() && !document.select(dataIdSelector).isNullOrEmpty())
-                    getXhrChapters(document.select(dataIdSelector).attr("data-id")).select(chapterListSelector())
-                else elements
-            }
-            .map { chapterFromElement(it) }
+        var chapterElements = document.select(chapterListSelector())
+
+        if (chapterElements.isEmpty() && !chaptersWrapper.isNullOrEmpty()) {
+            val mangaUrl = document.location().removeSuffix("/")
+            val mangaId = chaptersWrapper.attr("data-id")
+
+            val xhrRequest = if (useNewChapterEndpoint) xhrChaptersRequest(mangaUrl) else oldXhrChaptersRequest(mangaId)
+            val xhrResponse = client.newCall(xhrRequest).execute()
+
+            chapterElements = xhrResponse.asJsoup().select(chapterListSelector())
+            xhrResponse.close()
+        }
+
+        countViews(document)
+
+        return chapterElements.map(::chapterFromElement)
     }
 
     override fun chapterListSelector() = "li.wp-manga-chapter"
@@ -434,10 +475,11 @@ abstract class Madara(
                 chapter.name = urlElement.text()
             }
             // Dates can be part of a "new" graphic or plain text
+            // Added "title" alternative
             chapter.date_upload = select("img").firstOrNull()?.attr("alt")?.let { parseRelativeDate(it) }
+                ?: select("span a").firstOrNull()?.attr("title")?.let { parseRelativeDate(it) }
                 ?: parseChapterDate(select("span.chapter-release-date i").firstOrNull()?.text())
         }
-
 
         return chapter
     }
@@ -500,7 +542,7 @@ abstract class Madara(
 
     // Parses dates in this form:
     // 21 horas ago
-    private fun parseRelativeDate(date: String): Long {
+    protected open fun parseRelativeDate(date: String): Long {
         val number = Regex("""(\d+)""").find(date)?.value?.toIntOrNull() ?: return 0
         val cal = Calendar.getInstance()
 
@@ -525,6 +567,8 @@ abstract class Madara(
     open val pageListParseSelector = "div.page-break, li.blocks-gallery-item"
 
     override fun pageListParse(document: Document): List<Page> {
+        countViews(document)
+
         return document.select(pageListParseSelector).mapIndexed { index, element ->
             Page(
                 index,
@@ -541,6 +585,62 @@ abstract class Madara(
     }
 
     override fun imageUrlParse(document: Document) = throw UnsupportedOperationException("Not used")
+
+    /**
+     * Set it to false if you want to disable the extension reporting the view count
+     * back to the source website through admin-ajax.php.
+     */
+    protected open val sendViewCount: Boolean = true
+
+    protected open fun countViewsRequest(document: Document): Request? {
+        val wpMangaData = document.select("script#wp-manga-js-extra").firstOrNull()
+            ?.data() ?: return null
+
+        val wpMangaInfo = wpMangaData
+            .substringAfter("var manga = ")
+            .substringBeforeLast(";")
+
+        val wpManga = runCatching { json.parseToJsonElement(wpMangaInfo).jsonObject }
+            .getOrNull() ?: return null
+
+        if (wpManga["enable_manga_view"]?.jsonPrimitive?.content == "1") {
+            val formBuilder = FormBody.Builder()
+                .add("action", "manga_views")
+                .add("manga", wpManga["manga_id"]!!.jsonPrimitive.content)
+
+            if (wpManga["chapter_slug"] != null) {
+                formBuilder.add("chapter", wpManga["chapter_slug"]!!.jsonPrimitive.content)
+            }
+
+            val formBody = formBuilder.build()
+
+            val newHeaders = headersBuilder()
+                .set("Content-Length", formBody.contentLength().toString())
+                .set("Content-Type", formBody.contentType().toString())
+                .set("Referer", document.location())
+                .build()
+
+            val ajaxUrl = wpManga["ajax_url"]!!.jsonPrimitive.content
+
+            return POST(ajaxUrl, newHeaders, formBody)
+        }
+
+        return null
+    }
+
+    /**
+     * Send the view count request to the Madara endpoint.
+     *
+     * @param document The response document with the wp-manga data
+     */
+    protected open fun countViews(document: Document) {
+        if (!sendViewCount) {
+            return
+        }
+
+        val request = countViewsRequest(document) ?: return
+        runCatching { client.newCall(request).execute().close() }
+    }
 
     companion object {
         const val URL_SEARCH_PREFIX = "SLUG:"

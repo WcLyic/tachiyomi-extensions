@@ -10,8 +10,8 @@ project(":duktape-stub").projectDir = File("lib/duktape-stub")
 include(":lib-dataimage")
 project(":lib-dataimage").projectDir = File("lib/dataimage")
 
-if (System.getenv("CI") == null || System.getenv("CI_PUSH") == "true") {
-    // Local development or full build for push
+if (System.getenv("CI") == null) {
+    // Local development (full project build)
 
     include(":multisrc")
     project(":multisrc").projectDir = File("multisrc")
@@ -38,10 +38,13 @@ if (System.getenv("CI") == null || System.getenv("CI_PUSH") == "true") {
      * If you're developing locally and only want to work with a single module,
      * comment out the parts above and uncomment below.
      */
-    // val lang = "all"
-    // val name = "mangadex"
-    // include(":${lang}-${name}")
-    // project(":${lang}-${name}").projectDir = File("src/${lang}/${name}")
+//    val lang = "all"
+//    val name = "mangadex"
+//    val projectName = ":extensions:individual:$lang:$name"
+//    val projectName = ":extensions:multisrc:$lang:$name"
+//    include(projectName)
+//    project(projectName).projectDir = File("src/${lang}/${name}")
+//    project(projectName).projectDir = File("generated-src/${lang}/${name}")
 } else {
     // Running in CI (GitHub Actions)
 

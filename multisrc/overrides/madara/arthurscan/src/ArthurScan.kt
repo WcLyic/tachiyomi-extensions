@@ -15,12 +15,14 @@ class ArthurScan : Madara(
 ) {
 
     override val client: OkHttpClient = super.client.newBuilder()
-        .addInterceptor(RateLimitInterceptor(1, 1, TimeUnit.SECONDS))
+        .addInterceptor(RateLimitInterceptor(1, 2, TimeUnit.SECONDS))
         .build()
 
-    override fun popularMangaSelector() = "div.page-item-detail.manga"
-
     override val altName: String = "Nome alternativo: "
+
+    override val useNewChapterEndpoint = true
+
+    override fun popularMangaSelector() = "div.page-item-detail.manga"
 
     // [...document.querySelectorAll('div.genres li a')]
     //     .map(x => `Genre("${x.innerText.slice(1, -4).trim()}", "${x.href.replace(/.*-genre\/(.*)\//, '$1')}")`)

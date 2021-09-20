@@ -5,8 +5,7 @@ ext {
     extName = 'Readmanga'
     pkgNameSuffix = 'ru.readmanga'
     extClass = '.Readmanga'
-    extVersionCode = 29
-    libVersion = '1.2'
+    extVersionCode = 31
 }
 
 dependencies {

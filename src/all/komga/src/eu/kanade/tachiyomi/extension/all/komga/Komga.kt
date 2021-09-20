@@ -5,9 +5,7 @@ import android.content.SharedPreferences
 import android.text.InputType
 import android.util.Log
 import android.widget.Toast
-import com.github.salomonbrys.kotson.fromJson
-import com.google.gson.Gson
-import eu.kanade.tachiyomi.BuildConfig
+import eu.kanade.tachiyomi.extension.BuildConfig
 import eu.kanade.tachiyomi.extension.all.komga.dto.AuthorDto
 import eu.kanade.tachiyomi.extension.all.komga.dto.BookDto
 import eu.kanade.tachiyomi.extension.all.komga.dto.CollectionDto
@@ -25,6 +23,8 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
+import kotlinx.serialization.decodeFromString
+import kotlinx.serialization.json.Json
 import okhttp3.Credentials
 import okhttp3.Dns
 import okhttp3.Headers
@@ -37,19 +37,20 @@ import rx.android.schedulers.AndroidSchedulers
 import rx.schedulers.Schedulers
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import uy.kohesive.injekt.injectLazy
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
 open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
     override fun popularMangaRequest(page: Int): Request =
-        GET("$baseUrl/api/v1/series?page=${page - 1}", headers)
+        GET("$baseUrl/api/v1/series?page=${page - 1}&deleted=false", headers)
 
     override fun popularMangaParse(response: Response): MangasPage =
         processSeriesPage(response)
 
     override fun latestUpdatesRequest(page: Int): Request =
-        GET("$baseUrl/api/v1/series/latest?page=${page - 1}", headers)
+        GET("$baseUrl/api/v1/series/latest?page=${page - 1}&deleted=false", headers)
 
     override fun latestUpdatesParse(response: Response): MangasPage =
         processSeriesPage(response)
@@ -65,7 +66,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
             else -> "series"
         }
 
-        val url = "$baseUrl/api/v1/$type?search=$query&page=${page - 1}".toHttpUrlOrNull()!!.newBuilder()
+        val url = "$baseUrl/api/v1/$type?search=$query&page=${page - 1}&deleted=false".toHttpUrlOrNull()!!.newBuilder()
 
         filters.forEach { filter ->
             when (filter) {
@@ -177,18 +178,18 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
 
     override fun mangaDetailsParse(response: Response): SManga =
         if (response.fromReadList()) {
-            val readList = gson.fromJson<ReadListDto>(response.body?.charStream()!!)
+            val readList = json.decodeFromString<ReadListDto>(response.body?.string()!!)
             readList.toSManga()
         } else {
-            val series = gson.fromJson<SeriesDto>(response.body?.charStream()!!)
+            val series = json.decodeFromString<SeriesDto>(response.body?.string()!!)
             series.toSManga()
         }
 
     override fun chapterListRequest(manga: SManga): Request =
-        GET("${manga.url}/books?unpaged=true&media_status=READY", headers)
+        GET("${manga.url}/books?unpaged=true&media_status=READY&deleted=false", headers)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val page = gson.fromJson<PageWrapperDto<BookDto>>(response.body?.charStream()!!).content
+        val page = json.decodeFromString<PageWrapperDto<BookDto>>(response.body?.string()!!).content
 
         val r = page.mapIndexed { index, book ->
             SChapter.create().apply {
@@ -206,7 +207,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
         GET("${chapter.url}/pages")
 
     override fun pageListParse(response: Response): List<Page> {
-        val pages = gson.fromJson<List<PageDto>>(response.body?.charStream()!!)
+        val pages = json.decodeFromString<List<PageDto>>(response.body?.string()!!)
         return pages.map {
             val url = "${response.request.url}/${it.number}" +
                 if (!supportedImageTypes.contains(it.mediaType)) {
@@ -223,11 +224,11 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
 
     private fun processSeriesPage(response: Response): MangasPage {
         if (response.fromReadList()) {
-            with(gson.fromJson<PageWrapperDto<ReadListDto>>(response.body?.charStream()!!)) {
+            with(json.decodeFromString<PageWrapperDto<ReadListDto>>(response.body?.string()!!)) {
                 return MangasPage(content.map { it.toSManga() }, !last)
             }
         } else {
-            with(gson.fromJson<PageWrapperDto<SeriesDto>>(response.body?.charStream()!!)) {
+            with(json.decodeFromString<PageWrapperDto<SeriesDto>>(response.body?.string()!!)) {
                 return MangasPage(content.map { it.toSManga() }, !last)
             }
         }
@@ -243,7 +244,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 "ENDED" -> SManga.COMPLETED
                 else -> SManga.UNKNOWN
             }
-            genre = (metadata.genres + metadata.tags).joinToString(", ")
+            genre = (metadata.genres + metadata.tags + booksMetadata.tags).distinct().joinToString(", ")
             description = metadata.summary.ifBlank { booksMetadata.summary }
             booksMetadata.authors.groupBy { it.role }.let { map ->
                 author = map["writer"]?.map { it.name }?.distinct()?.joinToString()
@@ -254,6 +255,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
     private fun ReadListDto.toSManga(): SManga =
         SManga.create().apply {
             title = name
+            description = summary
             url = "$baseUrl/api/v1/readlists/$id"
             thumbnail_url = "$url/thumbnail"
             status = SManga.UNKNOWN
@@ -355,11 +357,11 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
     override val baseUrl by lazy { getPrefBaseUrl() }
     private val username by lazy { getPrefUsername() }
     private val password by lazy { getPrefPassword() }
-    private val gson by lazy { Gson() }
+    private val json: Json by injectLazy()
 
     override fun headersBuilder(): Headers.Builder =
         Headers.Builder()
-            .add("User-Agent", "Tachiyomi Komga v${BuildConfig.VERSION_NAME}")
+            .add("User-Agent", "TachiyomiKomga/${BuildConfig.VERSION_NAME}")
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -426,7 +428,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 .subscribe(
                     { response ->
                         libraries = try {
-                            gson.fromJson(response.body?.charStream()!!)
+                            json.decodeFromString(response.body?.string()!!)
                         } catch (e: Exception) {
                             emptyList()
                         }
@@ -444,7 +446,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 .subscribe(
                     { response ->
                         collections = try {
-                            gson.fromJson<PageWrapperDto<CollectionDto>>(response.body?.charStream()!!).content
+                            json.decodeFromString<PageWrapperDto<CollectionDto>>(response.body?.string()!!).content
                         } catch (e: Exception) {
                             emptyList()
                         }
@@ -462,7 +464,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 .subscribe(
                     { response ->
                         genres = try {
-                            gson.fromJson(response.body?.charStream()!!)
+                            json.decodeFromString(response.body?.string()!!)
                         } catch (e: Exception) {
                             emptySet()
                         }
@@ -473,14 +475,14 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 )
 
             Single.fromCallable {
-                client.newCall(GET("$baseUrl/api/v1/tags/series", headers)).execute()
+                client.newCall(GET("$baseUrl/api/v1/tags", headers)).execute()
             }
                 .subscribeOn(Schedulers.io())
                 .observeOn(AndroidSchedulers.mainThread())
                 .subscribe(
                     { response ->
                         tags = try {
-                            gson.fromJson(response.body?.charStream()!!)
+                            json.decodeFromString(response.body?.string()!!)
                         } catch (e: Exception) {
                             emptySet()
                         }
@@ -498,7 +500,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 .subscribe(
                     { response ->
                         publishers = try {
-                            gson.fromJson(response.body?.charStream()!!)
+                            json.decodeFromString(response.body?.string()!!)
                         } catch (e: Exception) {
                             emptySet()
                         }
@@ -516,7 +518,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, HttpSource() {
                 .subscribe(
                     { response ->
                         authors = try {
-                            val list: List<AuthorDto> = gson.fromJson(response.body?.charStream()!!)
+                            val list: List<AuthorDto> = json.decodeFromString(response.body?.string()!!)
                             list.groupBy { it.role }
                         } catch (e: Exception) {
                             emptyMap()

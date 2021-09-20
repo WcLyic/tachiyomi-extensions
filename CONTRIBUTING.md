@@ -78,7 +78,6 @@ ext {
     pkgNameSuffix = '<lang>.<mysourcename>'
     extClass = '.<MySourceName>'
     extVersionCode = 1
-    libVersion = '1.2'
     containsNsfw = true
 }
 
@@ -91,7 +90,7 @@ apply from: "$rootDir/common.gradle"
 | `pkgNameSuffix` | A unique suffix added to `eu.kanade.tachiyomi.extension`. The language and the site name should be enough. Remember your extension code implementation must be placed in this package. |
 | `extClass` | Points to the class that implements `Source`. You can use a relative path starting with a dot (the package name is the base path). This is used to find and instantiate the source(s). |
 | `extVersionCode` | The extension version code. This must be a positive integer and incremented with any change to the code. |
-| `libVersion` | The version of the [extensions library](https://github.com/tachiyomiorg/extensions-lib) used. |
+| `libVersion` | (Optional, defaults to `1.2`) The version of the [extensions library](https://github.com/tachiyomiorg/extensions-lib) used. |
 | `containsNsfw` | (Optional, defaults to `false`) Flag to indicate that a source contains NSFW content. |
 
 The extension's version name is generated automatically by concatenating `libVersion` and `extVersionCode`. With the example used above, the version would be `1.2.1`.
@@ -100,7 +99,7 @@ The extension's version name is generated automatically by concatenating `libVer
 
 #### Extension API
 
-Extensions rely on [extensions-lib](https://github.com/tachiyomiorg/extensions-lib), which provides some interfaces and stubs from the [app](https://github.com/tachiyomiorg/tachiyomi) for compilation purposes. The actual implementations can be found [here](https://github.com/tachiyomiorg/tachiyomi/tree/dev/app/src/main/java/eu/kanade/tachiyomi/source). Referencing the actual implementation will help with understanding extensions' call flow.
+Extensions rely on [extensions-lib](https://github.com/tachiyomiorg/extensions-lib), which provides some interfaces and stubs from the [app](https://github.com/tachiyomiorg/tachiyomi) for compilation purposes. The actual implementations can be found [here](https://github.com/tachiyomiorg/tachiyomi/tree/master/app/src/main/java/eu/kanade/tachiyomi/source). Referencing the actual implementation will help with understanding extensions' call flow.
 
 #### Duktape stub
 
@@ -291,13 +290,14 @@ multisrc
             │                   └── <ThemeName>.kt
             └── generator
                 ├── GeneratorMain.kt
+                ├── IntelijConfigurationGeneratorMain.kt
                 └── ThemeSourceGenerator.kt
 ```
 
 - `multisrc/src/main/java/eu/kanade/tachiyomi/multisrc/<themepkg>/<Theme>.kt` defines the the theme's default implementation.
 - `multisrc/src/main/java/eu/kanade/tachiyomi/multisrc/<theme>/<Theme>Generator.kt` defines the the theme's generator class, this is similar to a `SourceFactory` class.
-- `multisrc/overrides/<themepkg>/defualt/res` is the theme's default icons, if a source doesn't have overrides for `res`, then defualt icons will be used.
-- `multisrc/overrides/<themepkg>/defualt/additional.gradle.kts` defines additional gradle code, this will be copied at the end of all generated sources from this theme.
+- `multisrc/overrides/<themepkg>/default/res` is the theme's default icons, if a source doesn't have overrides for `res`, then default icons will be used.
+- `multisrc/overrides/<themepkg>/default/additional.gradle.kts` defines additional gradle code, this will be copied at the end of all generated sources from this theme.
 - `multisrc/overrides/<themepkg>/<sourcepkg>` contains overrides for a source that is defined inside the `<Theme>Generator.kt` class.
 - `multisrc/overrides/<themepkg>/<sourcepkg>/src` contains source overrides.
 - `multisrc/overrides/<themepkg>/<sourcepkg>/res` contains override for icons.
@@ -308,16 +308,19 @@ multisrc
 There are three steps in running and testing a theme source:
 
 1. Generate the sources
-    - **Method 1:** run `./gradlew multisrc:generateExtensions` from a terminal window to generate all sources.
-    - **Method 2:** Directly run `Generator.GeneratorMain.main` by pressing the play button in front of the method shown inside Android Studio to generate all sources.
-    - **Method 3:** Directly run `<themepkg>.<ThemeName>Generator.main` by pressing the play button in front of the method shown inside Android Studio to generate sources from the said theme.
+    - **Option 1: Only generate sources from one theme**
+        - **Method 1:** Find and run `<ThemeName>Generator` run configuration form the `Run/Debug Configuration` menu.
+        - **Method 2:** Directly run `<themepkg>.<ThemeName>Generator.main` by pressing the play button in front of the method shown inside Android Studio's Code Editor to generate sources from the said theme.
+    - **Option 2: Generate sources from all themes**
+        - **Method 1:** Run `./gradlew multisrc:generateExtensions` from a terminal window to generate all sources.
+        - **Method 2:** Directly run `Generator.GeneratorMain.main` by pressing the play button in front of the method shown inside Android Studio's Code Editor to generate all sources.
 2. Sync gradle to import the new generated sources inside `generated-src`
     - **Method 1:** Android Studio might prompt to sync the gradle. Click on `Sync Now`.
-    - **Method 1:** Manually re-sync by opening `File` -> `Sync Project with Gradle Files` or by pressing `Alt+f` then `g`.
+    - **Method 2:** Manually re-sync by opening `File` -> `Sync Project with Gradle Files` or by pressing `Alt+f` then `g`.
 3. Build and test the generated Extention like normal `src` sources.
-    - It's recommended to make changes here to skip going through step 1 and 2 multiple times, and when you are done, copying the changes back to `multisrc`. 
+    - It's recommended to make changes here to skip going through step 1 and 2 multiple times, and when you are done, copying the changes back to `multisrc`.
 
-### Scaffolding sources
+### Scaffolding overrides
 You can use this python script to generate scaffolds for source overrides. Put it inside `multisrc/overrides/<themepkg>/` as `scaffold.py`.
 ```python
 import os, sys

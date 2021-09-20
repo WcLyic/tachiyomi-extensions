@@ -143,7 +143,7 @@ abstract class MangaBox(
         return SManga.create().apply {
             document.select(mangaDetailsMainSelector).firstOrNull()?.let { infoElement ->
                 title = infoElement.select("h1, h2").first().text()
-                author = infoElement.select("li:contains(author) a, td:containsOwn(author) + td").text()
+                author = infoElement.select("li:contains(author) a, td:containsOwn(author) + td a").eachText().joinToString()
                 status = parseStatus(infoElement.select("li:contains(status), td:containsOwn(status) + td").text())
                 genre = infoElement.select("div.manga-info-top li:contains(genres)").firstOrNull()
                     ?.select("a")?.joinToString { it.text() } // kakalot
@@ -157,10 +157,10 @@ abstract class MangaBox(
 
             // add alternative name to manga description
             document.select(altNameSelector).firstOrNull()?.ownText()?.let {
-                if (it.isEmpty().not()) {
-                    description += when {
-                        description!!.isEmpty() -> altName + it
-                        else -> "\n\n$altName" + it
+                if (it.isBlank().not()) {
+                    description = when {
+                        description.isNullOrBlank() -> altName + it
+                        else -> description + "\n\n$altName" + it
                     }
                 }
             }

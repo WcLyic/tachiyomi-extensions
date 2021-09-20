@@ -6,8 +6,7 @@ ext {
     extName = 'Mangahub'
     pkgNameSuffix = 'ru.mangahub'
     extClass = '.Mangahub'
-    extVersionCode = 10
-    libVersion = '1.2'
+    extVersionCode = 11
 }
 
 dependencies {

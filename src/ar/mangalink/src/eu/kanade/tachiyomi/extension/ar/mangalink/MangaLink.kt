@@ -1,11 +1,13 @@
 package eu.kanade.tachiyomi.extension.ar.mangalink
 
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import org.jsoup.nodes.Document
@@ -58,7 +60,17 @@ class MangaLink : ParsedHttpSource() {
     // Search
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        return GET("$baseUrl/mangas?page=$page&query=$query", headers)
+        val url = "$baseUrl/mangas?page=$page&query=$query".toHttpUrlOrNull()!!.newBuilder()
+        filters.forEach { filter ->
+            when (filter) {
+                is TypeFilter -> {
+                    filter.state
+                        .filter { it.state != Filter.TriState.STATE_IGNORE }
+                        .forEach { url.addQueryParameter("story[]", it.id) }
+                }
+            }
+        }
+        return GET(url.build().toString(), headers)
     }
 
     override fun searchMangaSelector() = popularMangaSelector()
@@ -73,7 +85,8 @@ class MangaLink : ParsedHttpSource() {
         return SManga.create().apply {
             document.select("div.card").first().let { info ->
                 title = info.select("h1").text()
-                genre = info.select("span.d-flex a.btn").joinToString { it.text() }
+                // add series type(manga/manhwa/manhua/other) thinggy to genre
+                genre = info.select("span.d-flex a.btn, span:nth-child(1) > label:nth-child(2)").joinToString { it.text() }
                 description = info.select("p.card-text").text()
                 thumbnail_url = info.select("img").attr("abs:src")
             }
@@ -101,5 +114,24 @@ class MangaLink : ParsedHttpSource() {
 
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
 
-    override fun getFilterList() = FilterList()
+    // Filters
+
+    override fun getFilterList() = FilterList(
+        Filter.Header("Type exclusion not available for this source"),
+        Filter.Separator(),
+        TypeFilter(getTypeList()),
+    )
+
+    class Type(name: String, val id: String = name) : Filter.TriState(name)
+    class TypeFilter(types: List<Type>) : Filter.Group<Type>("Type", types)
+
+    open fun getTypeList(): List<Type> = listOf(
+        Type("<--->", ""),
+        Type("مانجا(يابانية)", "1"),
+        Type("مانهوا(كورية)", "2"),
+        Type("مانها(صينية)", "3"),
+        Type("ويب تون", "4"),
+        Type("كوميك", "5"),
+        Type("غير معروف", "6"),
+    )
 }

@@ -6,8 +6,7 @@ ext {
     extName = 'Mangahasu'
     pkgNameSuffix = 'en.mangahasu'
     extClass = '.Mangahasu'
-    extVersionCode = 12
-    libVersion = '1.2'
+    extVersionCode = 14
 }
 
 apply from: "$rootDir/common.gradle"

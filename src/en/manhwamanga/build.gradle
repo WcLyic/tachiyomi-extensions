@@ -5,8 +5,7 @@ ext {
     extName = 'ManhwaManga.net'
     pkgNameSuffix = 'en.manhwamanga'
     extClass = '.ManhwaManga'
-    extVersionCode = 3
-    libVersion = '1.2'
+    extVersionCode = 5
     containsNsfw = true
 }
 

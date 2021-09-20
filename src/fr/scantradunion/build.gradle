@@ -5,8 +5,7 @@ ext {
     extName = 'Scantrad Union'
     pkgNameSuffix = 'fr.scantradunion'
     extClass = '.ScantradUnion'
-    extVersionCode = 1
-    libVersion = '1.2'
+    extVersionCode = 2
 }
 
 apply from: "$rootDir/common.gradle"

@@ -5,8 +5,7 @@ ext {
     extName = 'WNACG'
     pkgNameSuffix = 'zh.wnacg'
     extClass = '.wnacg'
-    extVersionCode = 4
-    libVersion = '1.2'
+    extVersionCode = 5
 }
 
 apply from: "$rootDir/common.gradle"

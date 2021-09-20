@@ -5,8 +5,7 @@ ext {
     extName = 'Jinmantiantang'
     pkgNameSuffix = 'zh.jinmantiantang'
     extClass = '.Jinmantiantang'
-    extVersionCode = 13
-    libVersion = '1.2'
+    extVersionCode = 15
     containsNsfw = true
 }
 
