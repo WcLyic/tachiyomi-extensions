@@ -150,7 +150,8 @@ class CopyManga : ConfigurableSource, HttpSource() {
                     thumbnail_url = obj.getString("cover")
                     author = Array<String?>(authorArray.length()) { i -> authorArray.getJSONObject(i).getString("name") }.joinToString(", ")
                     status = SManga.UNKNOWN
-                    url = "/api/v3/comic2/${obj.getString("path_word")}?platform=3"
+                    // url = "/api/v3/comic2/${obj.getString("path_word")}?platform=3"
+                    url = "/comic/${obj.getString("path_word")}"
                 }
             )
         }
@@ -159,7 +160,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         return MangasPage(ret, hasNextPage)
     }
 
-    override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl + manga.url, headers)
+    override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl + manga.url.replace("/comic/", "/api/v3/comic2/") + "?platform=3", headers)
     override fun mangaDetailsParse(response: Response): SManga {
         val body = response.body!!.string()
         // results > comic
@@ -219,7 +220,8 @@ class CopyManga : ConfigurableSource, HttpSource() {
                                 SChapter.create().apply {
                                     name = chapter.getString("name")
                                     date_upload = stringToUnixTimestamp(chapter.getString("datetime_created"))
-                                    url = "/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
+                                    // url = "/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
+                                    url = "/comic/$comicPathWord/chapter/${chapter.getString("uuid")}"
                                 }
                             )
                         }
@@ -232,7 +234,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         return retChapter.asReversed()
     }
 
-    override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url, headers)
+    override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url.replace("/comic/", "/api/v3/comic/").replace("/chapter/", "/chapter2/"), headers)
     override fun pageListParse(response: Response): List<Page> {
         val body = response.body!!.string()
         // results > chapter > contents[]
