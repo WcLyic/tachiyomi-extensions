@@ -237,14 +237,17 @@ class CopyManga : ConfigurableSource, HttpSource() {
         val body = response.body!!.string()
         // results > chapter > contents[]
         val res = JSONObject(body)
-        val pageArray = res.getJSONObject("results").getJSONObject("chapter").getJSONArray("contents")
+        val chapter = res.getJSONObject("results").getJSONObject("chapter")
+        val wordsArray = chapter.getJSONArray("words")
+        val pageArray = chapter.getJSONArray("contents")
 
         val ret = ArrayList<Page>(pageArray.length())
         for (i in 0 until pageArray.length()) {
+            val order = wordsArray.getInt(i)
             val page = pageArray.getJSONObject(i).getString("url")
-            ret.add(Page(i, "", page))
+            ret.add(Page(order, "", page))
         }
-
+        ret.sortBy { it.index }
         return ret
     }
 
