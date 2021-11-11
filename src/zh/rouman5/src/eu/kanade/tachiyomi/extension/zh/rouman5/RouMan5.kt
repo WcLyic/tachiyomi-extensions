@@ -134,8 +134,7 @@ class RouMan5 : HttpSource() {
         var pageArray = pageJson.getJSONObject("props").getJSONObject("pageProps").optJSONArray("images")
 
         if (pageArray == null) {
-            val url = response.request().url().toString()
-                .replace("/books/", "/api/books/")
+            val url = baseUrl + pageJson.getJSONObject("props").getJSONObject("pageProps").getString("chapterAPIPath")
             val obj = client.newCall(GET(url, headers)).execute().let { JSONObject(it.body()!!.string()) }
             pageArray = obj.getJSONObject("chapter").getJSONArray("images")
         }
