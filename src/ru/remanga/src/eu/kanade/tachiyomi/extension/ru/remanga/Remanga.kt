@@ -58,7 +58,7 @@ import kotlin.random.Random
 class Remanga : ConfigurableSource, HttpSource() {
     override val name = "Remanga"
 
-    override val baseUrl = "https://api.remanga.org"
+    override val baseUrl = "https://api.xn--80aaig9ahr.xn--c1avg"
 
     override val lang = "ru"
 
@@ -70,7 +70,7 @@ class Remanga : ConfigurableSource, HttpSource() {
 
     override fun headersBuilder(): Headers.Builder = Headers.Builder()
         .add("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:77.0) Gecko/20100101 Firefox/78.0$userAgentRandomizer")
-        .add("Referer", "https://www.google.com")
+        .add("Referer", baseUrl)
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -137,8 +137,8 @@ class Remanga : ConfigurableSource, HttpSource() {
             title = en_name
             url = "/api/titles/$dir/"
             thumbnail_url = if (img.high.isNotEmpty()) {
-                "$baseUrl/${img.high}"
-            } else "$baseUrl/${img.mid}"
+                baseUrl + img.high
+            } else baseUrl + img.mid
         }
 
     private val simpleDateFormat by lazy { SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss", Locale.US) }
@@ -239,7 +239,7 @@ class Remanga : ConfigurableSource, HttpSource() {
             // Do not change the title name to ensure work with a multilingual catalog!
             title = en_name
             url = "/api/titles/$dir/"
-            thumbnail_url = "$baseUrl/${img.high}"
+            thumbnail_url = baseUrl + img.high
             var altName = ""
             if (another_name.isNotEmpty()) {
                 altName = "Альтернативные названия:\n" + another_name + "\n\n"
@@ -250,11 +250,7 @@ class Remanga : ConfigurableSource, HttpSource() {
         }
     }
     private fun titleDetailsRequest(manga: SManga): Request {
-        val titleId = manga.url
-
-        val newHeaders = headersBuilder().build()
-
-        return GET("$baseUrl/$titleId", newHeaders)
+        return GET(baseUrl + manga.url, headers)
     }
 
     // Workaround to allow "Open in browser" use the real URL.
@@ -284,7 +280,7 @@ class Remanga : ConfigurableSource, HttpSource() {
     }
 
     private fun mangaBranches(manga: SManga): List<BranchesDto> {
-        val responseString = client.newCall(GET("$baseUrl/${manga.url}")).execute().body?.string() ?: return emptyList()
+        val responseString = client.newCall(GET(baseUrl + manga.url)).execute().body?.string() ?: return emptyList()
         // manga requiring login return "content" as a JsonArray instead of the JsonObject we expect
         val content = json.decodeFromString<JsonObject>(responseString)["content"]
         return if (content is JsonObject) {
@@ -304,7 +300,7 @@ class Remanga : ConfigurableSource, HttpSource() {
                 return Observable.just(listOf())
             }
             manga.status == SManga.LICENSED -> {
-                Observable.error(Exception("Licensed - No chapters to show"))
+                Observable.error(Exception("Лицензировано - Нет глав"))
             }
             else -> {
                 val branchId = branch.maxByOrNull { selector(it) }!!.id

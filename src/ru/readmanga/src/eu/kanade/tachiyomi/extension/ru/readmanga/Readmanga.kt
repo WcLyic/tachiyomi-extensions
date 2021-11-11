@@ -30,7 +30,7 @@ class Readmanga : ParsedHttpSource() {
 
     override val name = "Readmanga"
 
-    override val baseUrl = "https://readmanga.live"
+    override val baseUrl = "https://readmanga.io"
 
     override val lang = "ru"
 
@@ -40,6 +40,11 @@ class Readmanga : ParsedHttpSource() {
 
     override val client: OkHttpClient = network.client.newBuilder()
         .addNetworkInterceptor(rateLimitInterceptor).build()
+
+    override fun headersBuilder() = Headers.Builder().apply {
+        add("User-Agent", "readmangafun")
+        add("Referer", baseUrl)
+    }
 
     override fun popularMangaSelector() = "div.tile"
 
@@ -163,7 +168,7 @@ class Readmanga : ParsedHttpSource() {
         if (infoElement.select(".another-names").isNotEmpty()) {
             altName = "Альтернативные названия:\n" + infoElement.select(".another-names").text() + "\n\n"
         }
-        manga.description = ratingStar + " " + ratingValue + "[ⓘ" + ratingValueOver + "]" + " (голосов: " + ratingVotes + ")\n" + altName + infoElement.select("div.manga-description").text()
+        manga.description = ratingStar + " " + ratingValue + "[ⓘ" + ratingValueOver + "]" + " (голосов: " + ratingVotes + ")\n" + altName + document.select("div.manga-description").text()
         manga.status = parseStatus(infoElement.html())
         manga.thumbnail_url = infoElement.select("img").attr("data-full")
         return manga
@@ -337,12 +342,6 @@ class Readmanga : ParsedHttpSource() {
     private class AgeList(ages: List<Genre>) : Filter.Group<Genre>("Возрастная рекомендация", ages)
     private class More(moren: List<Genre>) : Filter.Group<Genre>("Прочее", moren)
     private class FilList(fils: List<Genre>) : Filter.Group<Genre>("Фильтры", fils)
-
-    /* [...document.querySelectorAll("tr.advanced_option:nth-child(1) > td:nth-child(3) span.js-link")]
-    *  .map(el => `Genre("${el.textContent.trim()}", $"{el.getAttribute('onclick')
-    *  .substr(31,el.getAttribute('onclick').length-33)"})`).join(',\n')
-    *  on https://readmanga.me/search/advanced
-    */
 
     override fun getFilterList() = FilterList(
         OrderBy(),

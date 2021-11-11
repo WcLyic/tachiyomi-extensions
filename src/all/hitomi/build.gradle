@@ -6,8 +6,8 @@ ext {
     extName = 'Hitomi.la'
     pkgNameSuffix = 'all.hitomi'
     extClass = '.HitomiFactory'
-    extVersionCode = 10
-    containsNsfw = true
+    extVersionCode = 11
+    isNsfw = true
 }
 
 apply from: "$rootDir/common.gradle"

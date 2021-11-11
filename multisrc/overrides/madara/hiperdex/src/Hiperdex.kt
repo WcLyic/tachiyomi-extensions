@@ -1,9 +1,7 @@
 package eu.kanade.tachiyomi.extension.en.hiperdex
 
-import eu.kanade.tachiyomi.annotations.Nsfw
 import eu.kanade.tachiyomi.multisrc.madara.Madara
 
-@Nsfw
 class Hiperdex : Madara("Hiperdex", "https://hiperdex.com", "en") {
     override fun getGenreList() = listOf(
         Genre("Adult", "adult"),
@@ -39,4 +37,6 @@ class Hiperdex : Madara("Hiperdex", "https://hiperdex.com", "en") {
         Genre("Yaoi", "yaoi"),
         Genre("Yuri", "yuri")
     )
+
+    override val useNewChapterEndpoint: Boolean = true
 }
