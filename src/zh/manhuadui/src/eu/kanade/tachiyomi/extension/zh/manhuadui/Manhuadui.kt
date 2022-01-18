@@ -107,7 +107,10 @@ class Manhuadui : ParsedHttpSource() {
         val manga = SManga.create()
         manga.description = document.select("#full-des").text().trim()
         manga.thumbnail_url = document.select("#Cover > mip-img").attr("src")
+        manga.author = document.select(".Introduct_Sub > .sub_r > .txtItme:eq(0)").text().trim()
+        val status = document.select(".Introduct_Sub > .sub_r > .txtItme:eq(2) > a:last-child").text().trim()
         manga.status = when(status) {
+                            "已完结" -> SManga.COMPLETED
                             "连载中" -> SManga.ONGOING
                             else -> SManga.UNKNOWN
                         }
