@@ -1,6 +1,5 @@
 package eu.kanade.tachiyomi.extension.all.tappytoon
 
-import android.util.Log
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -154,7 +153,7 @@ class Tappytoon(override val lang: String) : HttpSource() {
             SChapter.create().apply {
                 name = it.toString()
                 url = it.id.toString()
-                chapter_number = it.order
+                chapter_number = it.order + 1f
                 date_upload = dateFormat.parse(it.createdAt)?.time ?: 0L
             }
         }

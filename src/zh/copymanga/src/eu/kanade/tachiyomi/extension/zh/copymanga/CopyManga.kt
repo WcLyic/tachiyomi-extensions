@@ -3,7 +3,6 @@ package eu.kanade.tachiyomi.extension.zh.copymanga
 import android.app.Application
 import android.content.SharedPreferences
 import com.luhuiguo.chinese.ChineseUtils
-import eu.kanade.tachiyomi.lib.ratelimit.SpecificHostRateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
@@ -35,16 +34,6 @@ class CopyManga : ConfigurableSource, HttpSource() {
     override val supportsLatest = true
     private val searchPageSize = 18 // default
     private val chapterPageSize = 100
-    private val mainlandCdn1Url = "https://1767566263.rsc.cdn77.org"
-    private val mainlandCdn2Url = "https://1025857477.rsc.cdn77.org"
-    private val overseasCdn1Url = "https://mirror2.mangafunc.fun"
-    private val overseasCdn2Url = "https://mirror.mangafunc.fun"
-
-    val replaceToMirror2 = Regex("1767566263\\.rsc\\.cdn77\\.org")
-    val replaceToMirror = Regex("1025857477\\.rsc\\.cdn77\\.org")
-
-    private val CONNECT_PERMITS = 20
-    private val CONNECT_PERIOD = 1L
 
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
@@ -64,42 +53,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         init(null, arrayOf(trustManager), SecureRandom())
     }
 
-    private val mainSiteApiRateLimitInterceptor = SpecificHostRateLimitInterceptor(
-        baseUrl.toHttpUrlOrNull()!!,
-        CONNECT_PERMITS,
-        CONNECT_PERIOD
-    )
-
-    private val mainlandCDN1RateLimitInterceptor = SpecificHostRateLimitInterceptor(
-        mainlandCdn1Url.toHttpUrlOrNull()!!,
-        CONNECT_PERMITS,
-        CONNECT_PERIOD
-    )
-
-    private val mainlandCDN2RateLimitInterceptor = SpecificHostRateLimitInterceptor(
-        mainlandCdn2Url.toHttpUrlOrNull()!!,
-        CONNECT_PERMITS,
-        CONNECT_PERIOD
-    )
-
-    private val overseasCDN1RateLimitInterceptor = SpecificHostRateLimitInterceptor(
-        overseasCdn1Url.toHttpUrlOrNull()!!,
-        CONNECT_PERMITS,
-        CONNECT_PERIOD
-    )
-
-    private val overseasCDN2RateLimitInterceptor = SpecificHostRateLimitInterceptor(
-        overseasCdn2Url.toHttpUrlOrNull()!!,
-        CONNECT_PERMITS,
-        CONNECT_PERIOD
-    )
-
     override val client: OkHttpClient = super.client.newBuilder()
-        .addInterceptor(mainSiteApiRateLimitInterceptor)
-        .addInterceptor(mainlandCDN1RateLimitInterceptor)
-        .addInterceptor(mainlandCDN2RateLimitInterceptor)
-        .addInterceptor(overseasCDN1RateLimitInterceptor)
-        .addInterceptor(overseasCDN2RateLimitInterceptor)
         .sslSocketFactory(sslContext.socketFactory, trustManager)
         .build()
 
@@ -160,6 +114,9 @@ class CopyManga : ConfigurableSource, HttpSource() {
         return MangasPage(ret, hasNextPage)
     }
 
+    // Compatible with old url
+    // old url:"/comic/${obj.getString("path_word")}"
+    // new url:"/api/v3/comic2/${obj.getString("path_word")}?platform=3"
     override fun mangaDetailsRequest(manga: SManga) = GET(baseUrl + manga.url.replace("/comic/", "/api/v3/comic2/") + "?platform=3", headers)
     override fun mangaDetailsParse(response: Response): SManga {
         val body = response.body!!.string()
@@ -202,38 +159,54 @@ class CopyManga : ConfigurableSource, HttpSource() {
 
         val retChapter = ArrayList<SChapter>()
         // Get chaptersList according to groupName
-        chapterGroups.keys().forEach { groupName ->
+        val keys = chapterGroups.keys().asSequence().toList()
+        keys.filter { it -> it == "default" }.forEach { groupName ->
             run {
                 val chapterGroup = chapterGroups.getJSONObject(groupName)
-                val total = chapterGroup.getInt("count")
-                val pages = total / chapterPageSize + 1
-                // Get all chapter pages
-                for (page in 1..pages) {
-                    val chapterUrlString = "$baseUrl/api/v3/comic/$comicPathWord/group/$groupName/chapters?limit=$chapterPageSize&offset=${(page - 1) * chapterPageSize}&platform=3"
-                    val response: Response = client.newCall(GET(chapterUrlString, headers)).execute()
-                    // results > list
-                    val chapterArray = JSONObject(response.body!!.string()).optJSONObject("results").optJSONArray("list")
-                    if (chapterArray != null) {
-                        for (i in 0 until chapterArray.length()) {
-                            val chapter = chapterArray.getJSONObject(i)
-                            retChapter.add(
-                                SChapter.create().apply {
-                                    name = chapter.getString("name")
-                                    date_upload = stringToUnixTimestamp(chapter.getString("datetime_created"))
-                                    // url = "/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
-                                    url = "/comic/$comicPathWord/chapter/${chapter.getString("uuid")}"
-                                }
-                            )
-                        }
-                    }
-                }
+                fillChapters(chapterGroup, retChapter, comicPathWord)
             }
         }
-
+        val otherChapters = ArrayList<SChapter>()
+        keys.filter { it -> it != "default" }.forEach { groupName ->
+            run {
+                val chapterGroup = chapterGroups.getJSONObject(groupName)
+                fillChapters(chapterGroup, otherChapters, comicPathWord)
+            }
+        }
+        retChapter.addAll(0, otherChapters)
         // place others to top, as other group updates not so often
         return retChapter.asReversed()
     }
 
+    private fun fillChapters(chapterGroup: JSONObject, retChapter: ArrayList<SChapter>, comicPathWord: String?) {
+        val groupName = chapterGroup.getString("path_word")
+        val total = chapterGroup.getInt("count")
+        val pages = total / chapterPageSize + 1
+        // Get all chapter pages
+        for (page in 1..pages) {
+            val chapterUrlString = "$baseUrl/api/v3/comic/$comicPathWord/group/$groupName/chapters?limit=$chapterPageSize&offset=${(page - 1) * chapterPageSize}&platform=3"
+            val response: Response = client.newCall(GET(chapterUrlString, headers)).execute()
+            // results > list
+            val chapterArray = JSONObject(response.body!!.string()).optJSONObject("results").optJSONArray("list")
+            if (chapterArray != null) {
+                for (i in 0 until chapterArray.length()) {
+                    val chapter = chapterArray.getJSONObject(i)
+                    retChapter.add(
+                        SChapter.create().apply {
+                            name = chapter.getString("name")
+                            date_upload = stringToUnixTimestamp(chapter.getString("datetime_created"))
+                            // url = "/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
+                            url = "/comic/$comicPathWord/chapter/${chapter.getString("uuid")}"
+                        }
+                    )
+                }
+            }
+        }
+    }
+
+    // Compatible with old url
+    // old url:"/comic/$comicPathWord/chapter/${chapter.getString("uuid")}"
+    // new url:"/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
     override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url.replace("/comic/", "/api/v3/comic/").replace("/chapter/", "/chapter2/"), headers)
     override fun pageListParse(response: Response): List<Page> {
         val body = response.body!!.string()
@@ -256,10 +229,11 @@ class CopyManga : ConfigurableSource, HttpSource() {
     override fun headersBuilder() = super.headersBuilder()
         .set("User-Agent", "Dart/2.10(dart:io)")
         .set("source", "copyApp")
-        .set("version", "1.1.6")
+        .set("version", "1.2.5")
         .set("region", if (preferences.getBoolean(CHANGE_CDN_OVERSEAS, false)) "0" else "1")
         .set("webp", if (preferences.getBoolean(CHANGE_WEBP_OPTION, false)) "1" else "0")
         .set("authorization", "Token")
+        .set("platform", "3")
 
     // Unused, we can get image urls directly from the chapter page
     override fun imageUrlParse(response: Response) =

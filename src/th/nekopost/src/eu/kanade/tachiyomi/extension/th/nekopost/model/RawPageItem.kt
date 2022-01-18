@@ -1,14 +1,12 @@
 package eu.kanade.tachiyomi.extension.th.nekopost.model
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class RawPageItem(
-    @SerializedName("fileName")
-    val fileName: String,
-    @SerializedName("height")
+    val pageName: String? = null,
+    val fileName: String? = null,
     val height: Int,
-    @SerializedName("pageNo")
     val pageNo: Int,
-    @SerializedName("width")
     val width: Int
 )

@@ -142,7 +142,7 @@ class Jinmantiantang : ConfigurableSource, ParsedHttpSource() {
 
     override fun popularMangaNextPageSelector(): String = "a.prevnext"
     override fun popularMangaSelector(): String {
-        val baseSelector = ".list-col .well-sm"
+        val baseSelector = "div.col-xs-6.col-sm-6.col-md-4.col-lg-3.list-col"
         val removedGenres = preferences.getString("BLOCK_GENRES_LIST", "")!!.substringBefore("//").trim()
         // Extra selector is jquery-like selector, it uses regex to match element.text().
         // If string after 標籤 contains any word of removedGenres, the element would be ignored.
@@ -555,11 +555,11 @@ class Jinmantiantang : ConfigurableSource, ParsedHttpSource() {
             "中国大陆总站", "中国大陆分流1", "中国大陆分流2"
         )
         private val SITE_ENTRIES_ARRAY_VALUE = (0..4).map { i -> i.toString() }.toTypedArray()
-        // List is based on http://jmcomic.xyz
+        // List is based on https://jmcomic1.one/
         // Please also update AndroidManifest
         private val SITE_ENTRIES_ARRAY = arrayOf(
             DEFAULT_SITE, "18comic.org",
-            "18comic.art", "18comic1.art", "18comic2.art"
+            "jmcomic1.cc", "jmcomic2.cc", "jmcomic3.cc"
         )
     }
 }

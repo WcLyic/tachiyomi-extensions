@@ -1,12 +1,6 @@
 package eu.kanade.tachiyomi.extension.ru.henchan
 
 import android.annotation.SuppressLint
-import com.github.salomonbrys.kotson.array
-import com.github.salomonbrys.kotson.fromJson
-import com.github.salomonbrys.kotson.string
-import com.google.gson.Gson
-import com.google.gson.JsonArray
-import com.google.gson.JsonObject
 import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservable
@@ -34,8 +28,6 @@ class Henchan : ParsedHttpSource() {
     override val name = "Henchan"
 
     override val baseUrl = "https://hentaichan.live"
-
-    private val exhentaiBaseUrl = "http://exhentai-dono.me"
 
     override val lang = "ru"
 
@@ -245,28 +237,30 @@ class Henchan : ParsedHttpSource() {
 
     override fun pageListRequest(chapter: SChapter): Request {
         val url = if (chapter.url.contains("/manga/")) {
-            exhentaiBaseUrl + chapter.url.replace("/manga/", "/online/") + "?development_access=true"
+            baseUrl + chapter.url.replace("/manga/", "/online/")
         } else {
             baseUrl + chapter.url
         }
         return GET(url, Headers.Builder().add("Accept", "image/webp,image/apng").build())
     }
+    override fun pageListParse(response: Response): List<Page> {
+        val html = response.body!!.string()
+        val prefix = "fullimg\": ["
+        val beginIndex = html.indexOf(prefix) + prefix.length
+        val endIndex = html.indexOf("]", beginIndex)
+        val trimmedHtml = html.substring(beginIndex, endIndex)
+            .replace("\"", "")
+            .replace("\'", "")
 
-    override fun imageUrlParse(document: Document) = throw Exception("Not Used")
-
-    private val gson = Gson()
-
-    private fun Document.parseJsonArray(): JsonArray {
-        val imgScript = this.select("script:containsData(fullimg)").first().toString()
-        val imgString = imgScript.substring(imgScript.indexOf('{'), imgScript.lastIndexOf('}') + 1).replace("&quot;", "\"")
-        return gson.fromJson<JsonObject>(imgString)["fullimg"].array
+        val pageUrls = trimmedHtml.split(", ")
+        return pageUrls.mapIndexed { i, url -> Page(i, "", url) }
     }
 
     override fun pageListParse(document: Document): List<Page> {
-        return document.parseJsonArray().mapIndexed { index, imageUrl ->
-            Page(index, imageUrl = imageUrl.string.replace(".gif.webp", ".gif"))
-        }
+        throw Exception("Not used")
     }
+
+    override fun imageUrlParse(document: Document) = ""
 
     private class Genre(val id: String, @SuppressLint("DefaultLocale") name: String = id.replace('_', ' ').capitalize()) : Filter.TriState(name)
     private class GenreList(genres: List<Genre>) : Filter.Group<Genre>("Тэги", genres)

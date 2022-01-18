@@ -43,7 +43,7 @@ class MangaDexHelper() {
      * get chapters for manga (aka manga/$id/feed endpoint)
      */
     fun getChapterEndpoint(mangaId: String, offset: Int, langCode: String) =
-        "${MDConstants.apiMangaUrl}/$mangaId/feed?includes[]=${MDConstants.scanlator}&limit=500&offset=$offset&translatedLanguage[]=$langCode&order[volume]=desc&order[chapter]=desc"
+        "${MDConstants.apiMangaUrl}/$mangaId/feed?includes[]=${MDConstants.scanlator}&includes[]=${MDConstants.uploader}&limit=500&offset=$offset&translatedLanguage[]=$langCode&order[volume]=desc&order[chapter]=desc"
 
     /**
      * Check if the manga url is a valid uuid
@@ -142,17 +142,14 @@ class MangaDexHelper() {
     /**
      * get the md@home url
      */
-    fun getMdAtHomeUrl(
+    private fun getMdAtHomeUrl(
         tokenRequestUrl: String,
         client: OkHttpClient,
         headers: Headers,
         cacheControl: CacheControl,
     ): String {
-        if (cacheControl == CacheControl.FORCE_NETWORK) {
-            tokenTracker[tokenRequestUrl] = Date().time
-        }
         val response =
-            client.newCall(GET(tokenRequestUrl, headers, cacheControl)).execute()
+            client.newCall(mdAtHomeRequest(tokenRequestUrl, headers, cacheControl)).execute()
 
         // This check is for the error that causes pages to fail to load.
         // It should never be entered, but in case it is, we retry the request.
@@ -162,6 +159,21 @@ class MangaDexHelper() {
         }
 
         return json.decodeFromString<AtHomeDto>(response.body!!.string()).baseUrl
+    }
+
+    /**
+     * create an md at home Request
+     */
+    fun mdAtHomeRequest(
+        tokenRequestUrl: String,
+        headers: Headers,
+        cacheControl: CacheControl
+    ): Request {
+        if (cacheControl == CacheControl.FORCE_NETWORK) {
+            tokenTracker[tokenRequestUrl] = Date().time
+        }
+
+        return GET(tokenRequestUrl, headers, cacheControl)
     }
 
     /**
@@ -276,10 +288,19 @@ class MangaDexHelper() {
                     MDConstants.scanlator,
                     true
                 )
-            }.mapNotNull { it.attributes!!.name }
+            }.filterNot { it.id == MDConstants.legacyNoGroupId } // 'no group' left over from MDv3
+                .mapNotNull { it.attributes!!.name }
                 .joinToString(" & ")
-                .replace("no group", "No Group")
-                .ifEmpty { "No Group" }
+                .ifEmpty {
+                    // fall back to uploader name if no group
+                    val users = chapterDataDto.relationships.filter { relationshipDto ->
+                        relationshipDto.type.equals(
+                            MDConstants.uploader,
+                            true
+                        )
+                    }.mapNotNull { it.attributes!!.username }
+                    users.joinToString(" & ", if (users.isNotEmpty()) "Uploaded by " else "")
+                }.ifEmpty { "No Group" } // "No Group" as final resort
 
             val chapterName = mutableListOf<String>()
             // Build chapter name
@@ -305,7 +326,7 @@ class MangaDexHelper() {
                 }
             }
 
-            if (attr.externalUrl != null && attr.data.isEmpty()) {
+            if (attr.externalUrl != null && attr.pages == 0) {
                 return null
             }
 

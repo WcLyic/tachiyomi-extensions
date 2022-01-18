@@ -1,10 +1,12 @@
 package eu.kanade.tachiyomi.extension.th.nekopost.model
 
-import com.google.gson.annotations.SerializedName
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
+@Serializable
 data class RawProjectCategory(
-    @SerializedName("npc_name")
-    val npcName: String,
-    @SerializedName("npc_name_link")
-    val npcNameLink: String
+    @SerialName("cateName")
+    val categoryName: String,
+    @SerialName("cateLink")
+    val categoryLink: String
 )
