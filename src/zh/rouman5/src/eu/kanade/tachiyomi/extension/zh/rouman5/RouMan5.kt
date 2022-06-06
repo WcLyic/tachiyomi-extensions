@@ -74,7 +74,7 @@ class RouMan5 : HttpSource() {
         val manga = SManga.create().apply {
             url = "/books/${obj.getString("id")}"
             title = obj.getString("name")
-            thumbnail_url = obj.getString("coverUrlTop")
+            thumbnail_url = obj.getString("coverUrl")
             author = obj.getString("author")
             description = obj.getString("description")
             status = when (obj.optBoolean("continued")) {
