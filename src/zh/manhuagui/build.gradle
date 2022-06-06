@@ -6,13 +6,11 @@ ext {
     extName = 'ManHuaGui'
     pkgNameSuffix = 'zh.manhuagui'
     extClass = '.Manhuagui'
-    extVersionCode = 11
+    extVersionCode = 13
 }
 
 dependencies {
-    compileOnly "org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutines_version"
-    compileOnly "org.jetbrains.kotlinx:kotlinx-coroutines-android:$coroutines_version"
-    implementation project(':lib-ratelimit')
+    compileOnly libs.bundles.coroutines
 }
 
 apply from: "$rootDir/common.gradle"

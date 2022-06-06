@@ -1,8 +1,8 @@
 package eu.kanade.tachiyomi.extension.pt.dropescan
 
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.multisrc.madara.Madara
 import eu.kanade.tachiyomi.network.GET
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import java.text.SimpleDateFormat
@@ -17,12 +17,10 @@ class DropeScan : Madara(
 ) {
 
     override val client: OkHttpClient = super.client.newBuilder()
-        .addInterceptor(RateLimitInterceptor(1, 2, TimeUnit.SECONDS))
+        .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
 
     override val useNewChapterEndpoint = true
-
-    override val altName = "Nome alternativo: "
 
     override fun popularMangaRequest(page: Int): Request =
         GET("$baseUrl/manga/page/$page/?m_orderby=views", headers)

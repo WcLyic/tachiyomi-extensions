@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.extension.pt.dreamunionscan
 
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.multisrc.madara.Madara
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -19,12 +19,8 @@ class DreamUnionScan : Madara(
 
     override val client: OkHttpClient = super.client.newBuilder()
         .addInterceptor(::authWarningIntercept)
-        .addInterceptor(RateLimitInterceptor(1, 2, TimeUnit.SECONDS))
+        .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
-
-    override val altName: String = "Nome alternativo: "
-
-    override fun popularMangaSelector() = "div.page-item-detail.manga"
 
     private fun authWarningIntercept(chain: Interceptor.Chain): Response {
         val response = chain.proceed(chain.request())

@@ -185,7 +185,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         // Get all chapter pages
         for (page in 1..pages) {
             val chapterUrlString = "$baseUrl/api/v3/comic/$comicPathWord/group/$groupName/chapters?limit=$chapterPageSize&offset=${(page - 1) * chapterPageSize}&platform=3"
-            val response: Response = client.newCall(GET(chapterUrlString, headers)).execute()
+    override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url, headers)
             // results > list
             val chapterArray = JSONObject(response.body!!.string()).optJSONObject("results").optJSONArray("list")
             if (chapterArray != null) {
@@ -209,12 +209,12 @@ class CopyManga : ConfigurableSource, HttpSource() {
     // new url:"/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
     override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url.replace("/comic/", "/api/v3/comic/").replace("/chapter/", "/chapter2/"), headers)
     override fun pageListParse(response: Response): List<Page> {
-        val body = response.body!!.string()
-        // results > chapter > contents[]
-        val res = JSONObject(body)
+        val document = response.asJsoup()
+        val disposableData = document.select("div.imageData").first().attr("contentKey")
+        val disposablePass = this.evaluateScript(document, "jojo")
         val chapter = res.getJSONObject("results").getJSONObject("chapter")
-        val wordsArray = chapter.getJSONArray("words")
-        val pageArray = chapter.getJSONArray("contents")
+        val pageJsonString = decryptChapterData(disposableData, disposablePass)
+        val pageArray = JSONArray(pageJsonString)
 
         val ret = ArrayList<Page>(pageArray.length())
         for (i in 0 until pageArray.length()) {
@@ -361,7 +361,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         val cdnPreference = androidx.preference.CheckBoxPreference(screen.context).apply {
             key = CHANGE_CDN_OVERSEAS
             title = "转换图片CDN为境外CDN"
-            summary = "加载图片使用境外CDN，使用代理的情况下推荐打开此选项（境外CDN可能无法查看一些刚刚更新的漫画，需要等待资源更新到CDN）"
+            summary = "需要重启软件（及清除章节缓存）以生效。加载图片使用境外CDN，使用代理的情况下推荐打开此选项（境外CDN可能无法查看一些刚刚更新的漫画，需要等待资源更新到CDN）"
 
             setOnPreferenceChangeListener { _, newValue ->
                 try {

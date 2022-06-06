@@ -3,10 +3,9 @@ package eu.kanade.tachiyomi.extension.ru.allhentai
 import android.app.Application
 import android.content.SharedPreferences
 import android.widget.Toast
-import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -25,6 +24,8 @@ import org.jsoup.nodes.Element
 import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
+import java.io.IOException
+import java.text.DecimalFormat
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -45,10 +46,16 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
 
     override val supportsLatest = true
 
-    private val rateLimitInterceptor = RateLimitInterceptor(2)
-
     override val client: OkHttpClient = network.client.newBuilder()
-        .addNetworkInterceptor(rateLimitInterceptor).build()
+        .rateLimit(2)
+        .addNetworkInterceptor { chain ->
+            val originalRequest = chain.request()
+            val response = chain.proceed(originalRequest)
+            if (originalRequest.url.toString().contains(baseUrl) and (originalRequest.url.toString().contains("internal/redirect") or (response.code == 301)))
+                throw IOException("Манга переехала на другой адрес/ссылку!")
+            response
+        }
+        .build()
 
     override fun popularMangaSelector() = "div.tile"
 
@@ -62,7 +69,7 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
 
     override fun popularMangaFromElement(element: Element): SManga {
         val manga = SManga.create()
-        manga.thumbnail_url = element.select("img.lazy").first()?.attr("data-original")
+        manga.thumbnail_url = element.select("img.lazy").first()?.attr("data-original")?.replace("_p.", ".")
         element.select("h3 > a").first().let {
             manga.setUrlWithoutDomain(it.attr("href"))
             manga.title = it.attr("title")
@@ -130,7 +137,7 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
         val infoElement = document.select(".expandable").first()
         val rawCategory = infoElement.select("span.elem_category").text()
         val category = if (rawCategory.isNotEmpty()) {
-            rawCategory.toLowerCase()
+            rawCategory.lowercase()
         } else {
             "манга"
         }
@@ -143,7 +150,7 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
         manga.title = document.select("h1.names .name").text()
         manga.author = authorElement
         manga.artist = infoElement.select("span.elem_illustrator").first()?.text()
-        manga.genre = infoElement.select("span.elem_genre").text().split(",").plusElement(category).joinToString { it.trim() }
+        manga.genre = category + ", " + infoElement.select("span.elem_genre").text().split(",").joinToString { it.trim() }
         manga.description = document.select("div#tab-description  .manga-description").text()
         manga.status = parseStatus(infoElement.html())
         manga.thumbnail_url = infoElement.select("img").attr("data-full")
@@ -174,14 +181,15 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
         return document.select(chapterListSelector()).map { chapterFromElement(it, manga) }
     }
 
-    override fun chapterListSelector() = "div.chapters-link > table > tbody > tr:has(td > a)"
+    override fun chapterListSelector() = "div.chapters-link > table > tbody > tr:has(td > a):has(td.date:not(.text-info))"
 
     private fun chapterFromElement(element: Element, manga: SManga): SChapter {
         val urlElement = element.select("a").first()
+        val chapterInf = element.select("td.item-title").first()
         val urlText = urlElement.text()
 
         val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(urlElement.attr("href") + "?mtr=1")
+        chapter.setUrlWithoutDomain(urlElement.attr("href") + "?mtr=true") // mtr is 18+ skip
 
         var translators = ""
         val translatorElement = urlElement.attr("title")
@@ -205,6 +213,8 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
             chapter.name = chapter.name.substringAfter("…").trim()
         }
 
+        chapter.chapter_number = chapterInf.attr("data-num").toFloat() / 10
+
         chapter.date_upload = element.select("td.d-none").last()?.text()?.let {
             try {
                 SimpleDateFormat("dd.MM.yy", Locale.US).parse(it)?.time ?: 0L
@@ -220,20 +230,18 @@ class AllHentai : ConfigurableSource, ParsedHttpSource() {
     }
 
     override fun prepareNewChapter(chapter: SChapter, manga: SManga) {
-        val basic = Regex("""\s*([0-9]+)(\s-\s)([0-9]+)\s*""")
         val extra = Regex("""\s*([0-9]+\sЭкстра)\s*""")
         val single = Regex("""\s*Сингл\s*""")
         when {
-            basic.containsMatchIn(chapter.name) -> {
-                basic.find(chapter.name)?.let {
-                    val number = it.groups[3]?.value!!
-                    chapter.chapter_number = number.toFloat()
-                }
+            extra.containsMatchIn(chapter.name) -> {
+                if (chapter.name.substringAfter("Экстра").trim().isEmpty())
+                    chapter.name = chapter.name.replaceFirst(" ", " - " + DecimalFormat("#,###.##").format(chapter.chapter_number).replace(",", ".") + " ")
             }
-            extra.containsMatchIn(chapter.name) -> // Extra chapters doesn't contain chapter number
-                chapter.chapter_number = -2f
-            single.containsMatchIn(chapter.name) -> // Oneshoots, doujinshi and other mangas with one chapter
-                chapter.chapter_number = 1f
+
+            single.containsMatchIn(chapter.name) -> {
+                if (chapter.name.substringAfter("Сингл").trim().isEmpty())
+                    chapter.name = DecimalFormat("#,###.##").format(chapter.chapter_number).replace(",", ".") + " " + chapter.name
+            }
         }
     }
 

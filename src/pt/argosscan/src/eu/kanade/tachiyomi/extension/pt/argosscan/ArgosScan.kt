@@ -5,10 +5,10 @@ import android.content.SharedPreferences
 import android.text.InputType
 import androidx.preference.EditTextPreference
 import androidx.preference.PreferenceScreen
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -19,11 +19,11 @@ import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
-import kotlinx.serialization.json.add
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import okhttp3.Headers
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
@@ -54,7 +54,7 @@ class ArgosScan : HttpSource(), ConfigurableSource {
 
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
         .addInterceptor(::loginIntercept)
-        .addInterceptor(RateLimitInterceptor(1, 2, TimeUnit.SECONDS))
+        .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
 
     private val json: Json by injectLazy()
@@ -64,6 +64,9 @@ class ArgosScan : HttpSource(), ConfigurableSource {
     }
 
     private var token: String? = null
+
+    override fun headersBuilder(): Headers.Builder = Headers.Builder()
+        .add("Token", "")
 
     private fun genericMangaFromObject(project: ArgosProjectDto): SManga = SManga.create().apply {
         title = project.name!!

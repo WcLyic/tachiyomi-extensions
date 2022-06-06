@@ -6,11 +6,7 @@ ext {
     extName = 'Argos Scan'
     pkgNameSuffix = 'pt.argosscan'
     extClass = '.ArgosScan'
-    extVersionCode = 19
-}
-
-dependencies {
-    implementation project(':lib-ratelimit')
+    extVersionCode = 21
 }
 
 apply from: "$rootDir/common.gradle"

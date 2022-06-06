@@ -6,7 +6,19 @@ import okhttp3.Response
 import java.text.SimpleDateFormat
 import java.util.Locale
 
-class EGYManga : Madara("EGY Manga", "https://egymanga.net", "ar", SimpleDateFormat("MMMM dd, yyyy", Locale("ar"))) {
-    override fun chapterListParse(response: Response): List<SChapter> = super.chapterListParse(response).reversed()
+class EGYManga : Madara(
+    "EGY Manga",
+    "https://egymanga.net",
+    "ar",
+    SimpleDateFormat("MMMM dd, yyyy", Locale("ar"))
+) {
+
+    // The website does not flag the content.
+    override val useLoadMoreSearch = false
+    override val filterNonMangaItems = false
+
     override val pageListParseSelector = "div.separator"
+
+    override fun chapterListParse(response: Response): List<SChapter> =
+        super.chapterListParse(response).reversed()
 }

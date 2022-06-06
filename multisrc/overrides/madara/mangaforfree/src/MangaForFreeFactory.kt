@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.extension.all.mangaforfree
 
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.multisrc.madara.Madara
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.Source
 import eu.kanade.tachiyomi.source.SourceFactory
 import okhttp3.OkHttpClient
@@ -25,10 +25,10 @@ class MangaForFreeALL : MangaForFree("MangaForFree.net", "https://mangaforfree.n
 abstract class MangaForFree(
     override val name: String,
     override val baseUrl: String,
-    override val lang: String
+    lang: String
 ) : Madara(name, baseUrl, lang) {
 
     override val client: OkHttpClient = super.client.newBuilder()
-        .addInterceptor(RateLimitInterceptor(1, 1, TimeUnit.SECONDS))
+        .rateLimit(1, 1, TimeUnit.SECONDS)
         .build()
 }

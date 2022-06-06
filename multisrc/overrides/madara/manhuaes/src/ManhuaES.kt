@@ -7,6 +7,11 @@ import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Response
 
 class ManhuaES : Madara("Manhua ES", "https://manhuaes.com", "en") {
+
+    // The website does not flag the content.
+    override val useLoadMoreSearch = false
+    override val filterNonMangaItems = false
+
     override fun chapterListParse(response: Response): List<SChapter> {
         var chapterList = super.chapterListParse(response)
 

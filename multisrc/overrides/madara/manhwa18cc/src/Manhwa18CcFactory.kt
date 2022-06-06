@@ -9,6 +9,8 @@ import eu.kanade.tachiyomi.source.model.Page
 import okhttp3.Request
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
+import java.text.SimpleDateFormat
+import java.util.Locale
 
 class Manhwa18CcFactory : SourceFactory {
     override fun createSources(): List<Source> = listOf(
@@ -29,8 +31,11 @@ class Manhwa18CcALL : Manhwa18Cc("Manhwa18.cc", "https://manhwa18.cc", "all")
 abstract class Manhwa18Cc(
     override val name: String,
     override val baseUrl: String,
-    override val lang: String
-) : Madara(name, baseUrl, lang) {
+    lang: String
+) : Madara(name, baseUrl, lang, SimpleDateFormat("dd MMM yyyy", Locale.US)) {
+
+    override val useLoadMoreSearch = false
+    override val fetchGenres = false
 
     override fun popularMangaSelector() = "div.manga-item"
     override val popularMangaUrlSelector = "div.data > h3 > a"
@@ -62,6 +67,8 @@ abstract class Manhwa18Cc(
     override val mangaSubString = "webtoon"
 
     override fun chapterListSelector() = "li.wleft"
+
+    override fun chapterDateSelector() = "span.chapter-time"
 
     override val pageListParseSelector = "div.read-content img"
 

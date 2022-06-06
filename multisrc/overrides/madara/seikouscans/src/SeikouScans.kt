@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.extension.pt.seikouscans
 
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.multisrc.madara.Madara
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import okhttp3.OkHttpClient
 import java.text.SimpleDateFormat
 import java.util.Locale
@@ -15,12 +15,8 @@ class SeikouScans : Madara(
 ) {
 
     override val client: OkHttpClient = super.client.newBuilder()
-        .addInterceptor(RateLimitInterceptor(1, 2, TimeUnit.SECONDS))
+        .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
 
-    override val altName: String = "Nome alternativo: "
-
     override val useNewChapterEndpoint = true
-
-    override fun popularMangaSelector() = "div.page-item-detail.manga"
 }

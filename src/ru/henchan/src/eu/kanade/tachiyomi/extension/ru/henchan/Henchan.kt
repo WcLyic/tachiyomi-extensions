@@ -1,9 +1,9 @@
 package eu.kanade.tachiyomi.extension.ru.henchan
 
 import android.annotation.SuppressLint
-import eu.kanade.tachiyomi.lib.ratelimit.RateLimitInterceptor
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservable
+import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
@@ -27,16 +27,15 @@ class Henchan : ParsedHttpSource() {
 
     override val name = "Henchan"
 
-    override val baseUrl = "https://hentaichan.live"
+    override val baseUrl = "https://xxxx.hentaichan.live"
 
     override val lang = "ru"
 
     override val supportsLatest = true
 
-    private val rateLimitInterceptor = RateLimitInterceptor(2)
-
     override val client: OkHttpClient = network.client.newBuilder()
-        .addNetworkInterceptor(rateLimitInterceptor).build()
+        .rateLimit(2)
+        .build()
 
     override fun popularMangaRequest(page: Int): Request =
         GET("$baseUrl/mostfavorites&sort=manga?offset=${20 * (page - 1)}", headers)
@@ -60,6 +59,7 @@ class Henchan : ParsedHttpSource() {
                                 genres += (if (f.isExcluded()) "-" else "") + f.id + '+'
                             }
                     }
+                    else -> return@forEach
                 }
             }
 
@@ -69,6 +69,7 @@ class Henchan : ParsedHttpSource() {
                         is OrderBy -> {
                             order = filter.toUriPartWithGenres()
                         }
+                        else -> return@forEach
                     }
                 }
                 "$baseUrl/tags/${genres.dropLast(1)}&sort=manga$order?offset=${20 * (page - 1)}"
@@ -78,6 +79,7 @@ class Henchan : ParsedHttpSource() {
                         is OrderBy -> {
                             order = filter.toUriPartWithoutGenres()
                         }
+                        else -> return@forEach
                     }
                 }
                 "$baseUrl/$order?offset=${20 * (page - 1)}"
@@ -86,13 +88,13 @@ class Henchan : ParsedHttpSource() {
         return GET(url, headers)
     }
 
-    override fun popularMangaSelector() = ".content_row"
+    override fun popularMangaSelector() = "div.content_row"
 
     override fun latestUpdatesSelector() = popularMangaSelector()
 
     override fun searchMangaSelector() = ".content_row:not(:has(div.item:containsOwn(Тип)))"
 
-    private fun String.getHQThumbnail(): String? {
+    private fun String.getHQThumbnail(): String {
         val isExHenManga = this.contains("/manganew_thumbs_blur/")
         val regex = "(?<=/)manganew_thumbs\\w*?(?=/)".toRegex(RegexOption.IGNORE_CASE)
         return this.replace(regex, "showfull_retina/manga")
@@ -103,11 +105,10 @@ class Henchan : ParsedHttpSource() {
     override fun popularMangaFromElement(element: Element): SManga {
         val manga = SManga.create()
         manga.thumbnail_url = element.select("img").first().attr("src").getHQThumbnail()
-
-        val urlElem = element.select("h2 > a").first()
-        manga.setUrlWithoutDomain(urlElem.attr("href"))
-        manga.title = urlElem.text()
-
+        manga.title = element.attr("title")
+        element.select("h2 > a").first().let {
+            manga.setUrlWithoutDomain(it.attr("href"))
+        }
         return manga
     }
 
@@ -125,9 +126,10 @@ class Henchan : ParsedHttpSource() {
 
     override fun mangaDetailsParse(document: Document): SManga {
         val manga = SManga.create()
+        manga.title = document.select("title").text().substringBefore(" »")
         manga.author = document.select(".row .item2 h2")[1].text()
         manga.genre = document.select(".sidetag > a:eq(2)").joinToString { it.text() }
-        manga.description = document.select("#description").text()
+        manga.description = document.select("#description").text().trim()
         manga.thumbnail_url = document.select("img#cover").attr("abs:src").getHQThumbnail()
         return manga
     }

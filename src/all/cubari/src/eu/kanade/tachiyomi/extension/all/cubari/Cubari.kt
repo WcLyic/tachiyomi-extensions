@@ -2,7 +2,7 @@ package eu.kanade.tachiyomi.extension.all.cubari
 
 import android.app.Application
 import android.os.Build
-import eu.kanade.tachiyomi.BuildConfig
+import eu.kanade.tachiyomi.AppInfo
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -42,7 +42,7 @@ open class Cubari(override val lang: String) : HttpSource() {
             "User-Agent",
             "(Android ${Build.VERSION.RELEASE}; " +
                 "${Build.MANUFACTURER} ${Build.MODEL}) " +
-                "Tachiyomi/${BuildConfig.VERSION_NAME} " +
+                "Tachiyomi/${AppInfo.getVersionName()} " +
                 Build.ID
         )
     }
@@ -349,7 +349,8 @@ open class Cubari(override val lang: String) : HttpSource() {
             title = jsonObj["title"]!!.jsonPrimitive.content
             artist = jsonObj["artist"]?.jsonPrimitive?.content ?: ARTIST_FALLBACK
             author = jsonObj["author"]?.jsonPrimitive?.content ?: AUTHOR_FALLBACK
-            description = jsonObj["description"]?.jsonPrimitive?.content ?: DESCRIPTION_FALLBACK
+            description = jsonObj["description"]?.jsonPrimitive?.content?.substringBefore("Tags: ") ?: DESCRIPTION_FALLBACK
+            genre = jsonObj["description"]?.jsonPrimitive?.content?.substringAfter("Tags: ")
             url = mangaReference?.url ?: jsonObj["url"]!!.jsonPrimitive.content
             thumbnail_url = jsonObj["coverUrl"]?.jsonPrimitive?.content
                 ?: jsonObj["cover"]?.jsonPrimitive?.content ?: ""

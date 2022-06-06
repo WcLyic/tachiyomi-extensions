@@ -1,7 +1,11 @@
 package eu.kanade.tachiyomi.extension.zh.baozimanhua
 
+import android.app.Application
+import android.content.SharedPreferences
+import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -16,33 +20,43 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class Baozimanhua : ParsedHttpSource() {
+class Baozimanhua : ParsedHttpSource(), ConfigurableSource {
 
-    override val name = "Baozimanhua"
+    override val id = 5724751873601868259
 
-    override val baseUrl = "https://cn.baozimh.com"
+    override val name = "包子漫画"
+
+    private val preferences: SharedPreferences by lazy {
+        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
+
+    override val baseUrl = "https://${preferences.getString(MIRROR_PREF, MIRRORS[0])}"
 
     override val lang = "zh"
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.cloudflareClient
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+        .addInterceptor(BannerInterceptor).build()
 
-    override fun chapterListSelector(): String = "div.pure-g[id^=chapter] > div"
+    override fun chapterListSelector() = throw UnsupportedOperationException("Not used.")
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
-        val chapters = document.select(chapterListSelector()).map { element ->
-            chapterFromElement(element)
-        }
-        // chapters are listed oldest to newest in the source
-        return chapters.reversed()
+        return if (document.select(".l-box > .pure-g").size == 1) { // only latest chapters
+            document.select(".l-box > .pure-g > div")
+        } else {
+            // chapters are listed oldest to newest in the source
+            document.select(".l-box > .pure-g[id^=chapter] > div").reversed()
+        }.map { chapterFromElement(it) }
     }
 
     override fun chapterFromElement(element: Element): SChapter {
         return SChapter.create().apply {
-            url = element.select("a").attr("href").trim()
+            setUrlWithoutDomain(element.select("a").attr("href").trim())
             name = element.text()
         }
     }
@@ -51,21 +65,18 @@ class Baozimanhua : ParsedHttpSource() {
 
     override fun popularMangaFromElement(element: Element): SManga {
         return SManga.create().apply {
-            url = element.attr("href")!!.trim()
+            setUrlWithoutDomain(element.attr("href")!!.trim())
             title = element.attr("title")!!.trim()
             thumbnail_url = element.select("> amp-img").attr("src")!!.trim()
         }
     }
 
-    override fun popularMangaNextPageSelector() = throw java.lang.UnsupportedOperationException("Not used.")
+    override fun popularMangaNextPageSelector(): String? = null
 
-    override fun popularMangaRequest(page: Int): Request = GET("https://www.baozimh.com/classify", headers)
+    override fun popularMangaRequest(page: Int): Request = GET("$baseUrl/classify?page=$page", headers)
 
     override fun popularMangaParse(response: Response): MangasPage {
-        val document = response.asJsoup()
-        val mangas = document.select(popularMangaSelector()).map { element ->
-            popularMangaFromElement(element)
-        }
+        val mangas = super.popularMangaParse(response).mangas
         return MangasPage(mangas, mangas.size == 36)
     }
 
@@ -75,17 +86,9 @@ class Baozimanhua : ParsedHttpSource() {
         return popularMangaFromElement(element)
     }
 
-    override fun latestUpdatesNextPageSelector() = throw java.lang.UnsupportedOperationException("Not used.")
+    override fun latestUpdatesNextPageSelector(): String? = null
 
     override fun latestUpdatesRequest(page: Int): Request = GET("$baseUrl/list/new", headers)
-
-    override fun latestUpdatesParse(response: Response): MangasPage {
-        val document = response.asJsoup()
-        val mangas = document.select(popularMangaSelector()).map { element ->
-            popularMangaFromElement(element)
-        }
-        return MangasPage(mangas, mangas.size == 12)
-    }
 
     override fun mangaDetailsParse(document: Document): SManga {
         return SManga.create().apply {
@@ -100,23 +103,23 @@ class Baozimanhua : ParsedHttpSource() {
                 "已完結" -> SManga.COMPLETED
                 else -> SManga.UNKNOWN
             }
+            // TODO: upload date by selector "em" in format "(2021年06月29日 更新)"
         }
     }
 
     override fun pageListParse(document: Document): List<Page> {
-        val pages = document.select("div.comic-contain > amp-img").mapIndexed() { index, element ->
-            Page(index, imageUrl = element.attr("src").trim())
+        return document.select(".comic-contain > amp-img").mapIndexed { index, element ->
+            Page(index, imageUrl = element.attr("src").trim() + BannerInterceptor.COMIC_IMAGE_SUFFIX)
         }
-        return pages
     }
 
     override fun imageUrlParse(document: Document) = throw UnsupportedOperationException("Not used.")
 
-    override fun searchMangaSelector() = throw java.lang.UnsupportedOperationException("Not used.")
+    override fun searchMangaSelector() = throw UnsupportedOperationException("Not used.")
 
-    override fun searchMangaFromElement(element: Element) = throw java.lang.UnsupportedOperationException("Not used.")
+    override fun searchMangaFromElement(element: Element) = throw UnsupportedOperationException("Not used.")
 
-    override fun searchMangaNextPageSelector() = throw java.lang.UnsupportedOperationException("Not used.")
+    override fun searchMangaNextPageSelector() = throw UnsupportedOperationException("Not used.")
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
         return if (query.startsWith(ID_SEARCH_PREFIX)) {
@@ -142,27 +145,8 @@ class Baozimanhua : ParsedHttpSource() {
         return if (query.isNotEmpty()) {
             GET("$baseUrl/search?q=$query", headers)
         } else {
-            lateinit var tag: String
-            lateinit var region: String
-            lateinit var status: String
-            lateinit var start: String
-            filters.forEach { filter ->
-                when (filter) {
-                    is TagFilter -> {
-                        tag = filter.toUriPart()
-                    }
-                    is RegionFilter -> {
-                        region = filter.toUriPart()
-                    }
-                    is StatusFilter -> {
-                        status = filter.toUriPart()
-                    }
-                    is StartFilter -> {
-                        start = filter.toUriPart()
-                    }
-                }
-            }
-            GET("$baseUrl/classify?type=$tag&region=$region&state=$status&filter=$start&page=$page")
+            val parts = filters.filterIsInstance<UriPartFilter>().joinToString("&") { it.toUriPart() }
+            GET("$baseUrl/classify?page=$page&$parts", headers)
         }
     }
 
@@ -191,13 +175,14 @@ class Baozimanhua : ParsedHttpSource() {
         StartFilter()
     )
 
-    private open class UriPartFilter(displayName: String, val vals: Array<Pair<String, String>>) :
-        Filter.Select<String>(displayName, vals.map { it.first }.toTypedArray()) {
-        fun toUriPart() = vals[state].second
+    private open class UriPartFilter(name: String, val query: String, val vals: Array<Pair<String, String>>) :
+        Filter.Select<String>(name, vals.map { it.first }.toTypedArray()) {
+        fun toUriPart() = "$query=${vals[state].second}"
     }
 
     private class TagFilter : UriPartFilter(
         "标签",
+        "type",
         arrayOf(
             Pair("全部", "all"),
             Pair("都市", "dushi"),
@@ -268,6 +253,7 @@ class Baozimanhua : ParsedHttpSource() {
 
     private class RegionFilter : UriPartFilter(
         "地区",
+        "region",
         arrayOf(
             Pair("全部", "all"),
             Pair("国漫", "cn"),
@@ -279,6 +265,7 @@ class Baozimanhua : ParsedHttpSource() {
 
     private class StatusFilter : UriPartFilter(
         "进度",
+        "state",
         arrayOf(
             Pair("全部", "all"),
             Pair("连载中", "serial"),
@@ -288,6 +275,7 @@ class Baozimanhua : ParsedHttpSource() {
 
     private class StartFilter : UriPartFilter(
         "标题开头",
+        "filter",
         arrayOf(
             Pair("全部", "*"),
             Pair("ABCD", "ABCD"),
@@ -301,7 +289,28 @@ class Baozimanhua : ParsedHttpSource() {
         )
     )
 
+    override fun setupPreferenceScreen(screen: PreferenceScreen) {
+        val mirrorPref = androidx.preference.ListPreference(screen.context).apply {
+            key = MIRROR_PREF
+            title = MIRROR_PREF_TITLE
+            entries = MIRRORS
+            entryValues = MIRRORS
+            summary = MIRROR_PREF_SUMMARY
+
+            setDefaultValue(MIRRORS[0])
+            setOnPreferenceChangeListener { _, newValue ->
+                preferences.edit().putString(MIRROR_PREF, newValue as String).commit()
+            }
+        }
+        screen.addPreference(mirrorPref)
+    }
+
     companion object {
         const val ID_SEARCH_PREFIX = "id:"
+
+        private const val MIRROR_PREF = "MIRROR"
+        private const val MIRROR_PREF_TITLE = "使用镜像网址"
+        private const val MIRROR_PREF_SUMMARY = "使用镜像网址。重启软件生效。"
+        private val MIRRORS = arrayOf("cn.baozimh.com", "cn.webmota.com")
     }
 }

@@ -44,7 +44,7 @@ import java.util.Locale
 import java.util.concurrent.TimeUnit
 
 open class BatoTo(
-    override val lang: String,
+    final override val lang: String,
     private val siteLang: String
 ) : ConfigurableSource, ParsedHttpSource() {
 
@@ -54,6 +54,12 @@ open class BatoTo(
 
     override val name: String = "Bato.to"
     override val baseUrl: String = getMirrorPref()!!
+    override val id: Long = when (lang) {
+        "zh-Hans" -> 2818874445640189582
+        "zh-Hant" -> 38886079663327225
+        "ro-MD" -> 8871355786189601023
+        else -> super.id
+    }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val mirrorPref = ListPreference(screen.context).apply {
@@ -173,7 +179,7 @@ open class BatoTo(
             else -> {
                 val url = "$baseUrl/browse".toHttpUrlOrNull()!!.newBuilder()
                 var min = ""
-                var max= ""
+                var max = ""
                 filters.forEach { filter ->
                     when (filter) {
                         is UtilsFilter -> {
@@ -483,6 +489,35 @@ open class BatoTo(
                         pages.add(Page(i, imageUrl = if (server.startsWith("http")) "${server}$imgUrl" else "https:${server}$imgUrl"))
                     }
                 }
+        } else if (script.contains("const imgHttpLis = ") && script.contains("const batoWord = ") && script.contains(
+                "const batoPass = "
+            )
+        ) {
+            val duktape = Duktape.create()
+            val imgHttpLis = json.parseToJsonElement(
+                script.substringAfter("const imgHttpLis = ").substringBefore(";")
+            ).jsonArray
+            val batoWord = script.substringAfter("const batoWord = ").substringBefore(";")
+            val batoPass =
+                duktape.evaluate(script.substringAfter("const batoPass = ").substringBefore(";"))
+                    .toString()
+            val input =
+                cryptoJS + "CryptoJS.AES.decrypt($batoWord, \"$batoPass\").toString(CryptoJS.enc.Utf8);"
+            val imgWordLis = json.parseToJsonElement(duktape.evaluate(input).toString()).jsonArray
+            duktape.close()
+
+            if (imgHttpLis.size == imgWordLis.size) {
+                imgHttpLis.forEachIndexed { i: Int, item ->
+                    val imageUrl =
+                        "${item.jsonPrimitive.content}?${imgWordLis.get(i).jsonPrimitive.content}"
+                    pages.add(
+                        Page(
+                            i,
+                            imageUrl = imageUrl
+                        )
+                    )
+                }
+            }
         }
 
         return pages
