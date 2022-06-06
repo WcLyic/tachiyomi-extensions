@@ -109,8 +109,8 @@ class RouMan5 : HttpSource() {
         val bookJson = mangaJson.getJSONObject("props").getJSONObject("pageProps").getJSONObject("book")
 
         val id = bookJson.getString("id")
-        val time = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX").parse(bookJson.getString("lastUpdate"))?.time ?: 0L
-        val chapterArray = bookJson.getJSONArray("chapters")
+        val time = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSSX").parse(bookJson.getString("updatedAt"))?.time ?: 0L
+        val chapterArray = bookJson.getJSONObject("activeResource").getJSONArray("chapters")
 
         val ret = ArrayList<SChapter>()
         for (i in 0 until chapterArray.length()) {
