@@ -29,7 +29,6 @@ import javax.net.ssl.X509TrustManager
 class CopyManga : ConfigurableSource, HttpSource() {
 
     override val name = "拷贝漫画"
-    override val baseUrl = "https://api.copymanga.com"
     override val lang = "zh"
     override val supportsLatest = true
     private val searchPageSize = 18 // default
@@ -38,6 +37,9 @@ class CopyManga : ConfigurableSource, HttpSource() {
     private val preferences: SharedPreferences by lazy {
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
     }
+
+    override val baseUrl = "https://${preferences.getString(API_URL_PREF, APIURLS[0])}"
+
     private val trustManager = object : X509TrustManager {
         override fun getAcceptedIssuers(): Array<X509Certificate> {
             return emptyArray()
@@ -131,7 +133,11 @@ class CopyManga : ConfigurableSource, HttpSource() {
             }
             title = _title
             thumbnail_url = obj.getString("cover")
-            description = obj.getString("brief")
+            var _description: String = obj.getString("brief")
+            if (preferences.getBoolean(SHOW_Simplified_Chinese_TITLE_PREF, false)) {
+                _description = ChineseUtils.toSimplified(_description)
+            }
+            description = _description
             val authorArray = obj.getJSONArray("author")
             author = Array<String?>(authorArray.length()) { i -> authorArray.getJSONObject(i).getString("name") }.joinToString(", ")
             status = when (obj.getJSONObject("status").getString("display")) {
@@ -185,7 +191,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         // Get all chapter pages
         for (page in 1..pages) {
             val chapterUrlString = "$baseUrl/api/v3/comic/$comicPathWord/group/$groupName/chapters?limit=$chapterPageSize&offset=${(page - 1) * chapterPageSize}&platform=3"
-    override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url, headers)
+            val response: Response = client.newCall(GET(chapterUrlString, headers)).execute()
             // results > list
             val chapterArray = JSONObject(response.body!!.string()).optJSONObject("results").optJSONArray("list")
             if (chapterArray != null) {
@@ -209,12 +215,12 @@ class CopyManga : ConfigurableSource, HttpSource() {
     // new url:"/api/v3/comic/$comicPathWord/chapter2/${chapter.getString("uuid")}"
     override fun pageListRequest(chapter: SChapter) = GET(baseUrl + chapter.url.replace("/comic/", "/api/v3/comic/").replace("/chapter/", "/chapter2/"), headers)
     override fun pageListParse(response: Response): List<Page> {
-        val document = response.asJsoup()
-        val disposableData = document.select("div.imageData").first().attr("contentKey")
-        val disposablePass = this.evaluateScript(document, "jojo")
+        val body = response.body!!.string()
+        // results > chapter > contents[]
+        val res = JSONObject(body)
         val chapter = res.getJSONObject("results").getJSONObject("chapter")
-        val pageJsonString = decryptChapterData(disposableData, disposablePass)
-        val pageArray = JSONArray(pageJsonString)
+        val wordsArray = chapter.getJSONArray("words")
+        val pageArray = chapter.getJSONArray("contents")
 
         val ret = ArrayList<Page>(pageArray.length())
         for (i in 0 until pageArray.length()) {
@@ -227,9 +233,9 @@ class CopyManga : ConfigurableSource, HttpSource() {
     }
 
     override fun headersBuilder() = super.headersBuilder()
-        .set("User-Agent", "Dart/2.10(dart:io)")
+        .set("User-Agent", "Dart/2.16(dart:io)")
         .set("source", "copyApp")
-        .set("version", "1.2.5")
+        .set("version", "1.3.7")
         .set("region", if (preferences.getBoolean(CHANGE_CDN_OVERSEAS, false)) "0" else "1")
         .set("webp", if (preferences.getBoolean(CHANGE_WEBP_OPTION, false)) "1" else "0")
         .set("authorization", "Token")
@@ -313,6 +319,17 @@ class CopyManga : ConfigurableSource, HttpSource() {
                 Pair("最早", "datetime_updated"),
             )
         ),
+        MangaFilter(
+            "类别",
+            "top",
+            arrayOf(
+                Pair("全部", ""),
+                Pair("日漫", "japan"),
+                Pair("韩漫", "korea"),
+                Pair("美漫", "west"),
+                Pair("已完结", "finish"),
+            )
+        ),
     )
 
     private class MangaFilter(
@@ -345,8 +362,8 @@ class CopyManga : ConfigurableSource, HttpSource() {
     override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
         val zhPreference = androidx.preference.CheckBoxPreference(screen.context).apply {
             key = SHOW_Simplified_Chinese_TITLE_PREF
-            title = "将标题转换为简体中文"
-            summary = "需要重启软件以生效。已添加漫画需要迁移改变标题。"
+            title = "将标题和简介转换为简体中文"
+            summary = "需要重启软件以生效。已添加漫画需要迁移改变标题和简介。"
 
             setOnPreferenceChangeListener { _, newValue ->
                 try {
@@ -388,14 +405,29 @@ class CopyManga : ConfigurableSource, HttpSource() {
                 }
             }
         }
+        val apiUrlPref = androidx.preference.ListPreference(screen.context).apply {
+            key = API_URL_PREF
+            title = "Api域名"
+            entries = APIURLS
+            entryValues = APIURLS
+            summary = "选择所使用的api域名。重启软件生效。"
+
+            setDefaultValue(APIURLS[0])
+            setOnPreferenceChangeListener { _, newValue ->
+                preferences.edit().putString(API_URL_PREF, newValue as String).commit()
+            }
+        }
         screen.addPreference(zhPreference)
         screen.addPreference(cdnPreference)
         screen.addPreference(webpPreference)
+        screen.addPreference(apiUrlPref)
     }
 
     companion object {
         private const val SHOW_Simplified_Chinese_TITLE_PREF = "showSCTitle"
         private const val CHANGE_CDN_OVERSEAS = "changeCDN"
         private const val CHANGE_WEBP_OPTION = "changeWebp"
+        private const val API_URL_PREF = "apiUrl"
+        private val APIURLS = arrayOf("api.copymanga.org", "api.copymanga.com", "api.copymanga.net", "api.copymanga.info")
     }
 }

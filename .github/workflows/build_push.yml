@@ -51,7 +51,7 @@ jobs:
       - name: Get number of modules
         run: |
           set -x
-          ./gradlew -q projects | grep '.*extensions\:\(individual\|multisrc\)\:zh\:.*' > projects.txt
+          ./gradlew -q projects | grep '.*extensions\:\(individual\|multisrc\)\:.*\:.*' > projects.txt
 
           echo "NUM_INDIVIDUAL_MODULES=$(cat projects.txt | grep '.*\:individual\:.*' | wc -l)" >> $GITHUB_ENV
           echo "NUM_MULTISRC_MODULES=$(cat projects.txt | grep '.*\:multisrc\:.*' | wc -l)" >> $GITHUB_ENV
@@ -83,8 +83,6 @@ jobs:
     steps:
       - name: Checkout master branch
         uses: actions/checkout@v3
-        with:
-          ref: my
 
       - name: Set up JDK
         uses: actions/setup-java@v3
@@ -136,8 +134,6 @@ jobs:
     steps:
       - name: Checkout master branch
         uses: actions/checkout@v3
-        with:
-          ref: my
 
       - name: Set up JDK
         uses: actions/setup-java@v3

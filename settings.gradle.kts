@@ -10,7 +10,9 @@ if (System.getenv("CI") == null || System.getenv("CI_MODULE_GEN") == "true") {
     project(":multisrc").projectDir = File("multisrc")
 
     // Loads all extensions
-    File(rootDir, "src").eachDir { dir ->
+    // File(rootDir, "src").eachDir { dir ->
+    if (true) {
+        val dir = File(rootDir, "src/zh")
         dir.eachDir { subdir ->
             val name = ":extensions:individual:${dir.name}:${subdir.name}"
             include(name)
@@ -18,7 +20,9 @@ if (System.getenv("CI") == null || System.getenv("CI_MODULE_GEN") == "true") {
         }
     }
     // Loads all generated extensions from multisrc
-    File(rootDir, "generated-src").eachDir { dir ->
+    // File(rootDir, "generated-src").eachDir { dir ->
+    if (true) {
+        val dir = File(rootDir, "generated-src/zh")
         dir.eachDir { subdir ->
             val name = ":extensions:multisrc:${dir.name}:${subdir.name}"
             include(name)
@@ -49,7 +53,7 @@ if (System.getenv("CI") == null || System.getenv("CI_MODULE_GEN") == "true") {
         project(":multisrc").projectDir = File("multisrc")
 
         // Loads generated extensions from multisrc
-        File(rootDir, "generated-src").getChunk(chunk, chunkSize)?.forEach {
+        File(rootDir, "generated-src/zh").getChunk(chunk, chunkSize)?.forEach {
             val name = ":extensions:multisrc:${it.parentFile.name}:${it.name}"
             println(name)
             include(name)
@@ -57,7 +61,7 @@ if (System.getenv("CI") == null || System.getenv("CI_MODULE_GEN") == "true") {
         }
     } else {
         // Loads individual extensions
-        File(rootDir, "src").eachDir { dir ->
+        File(rootDir, "src/zh").getChunk(chunk, chunkSize)?.forEach {
             val name = ":extensions:individual:${it.parentFile.name}:${it.name}"
             println(name)
             include(name)
@@ -68,11 +72,8 @@ if (System.getenv("CI") == null || System.getenv("CI_MODULE_GEN") == "true") {
 
 fun File.getChunk(chunk: Int, chunkSize: Int): List<File>? {
     return listFiles()
-        // Lang folder
+        // Extension folder
         ?.filter { it.isDirectory }
-        // Extension subfolders
-        ?.mapNotNull { dir -> dir.listFiles()?.filter { it.isDirectory } }
-        ?.flatten()
         ?.sortedBy { it.name }
         ?.chunked(chunkSize)
         ?.get(chunk)
