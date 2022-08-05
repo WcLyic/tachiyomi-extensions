@@ -7,7 +7,6 @@ import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.ConfigurableSource
-import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
@@ -16,7 +15,6 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
 import okhttp3.Headers
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -44,7 +42,7 @@ abstract class GroupLe(
 
     override val supportsLatest = true
 
-    override val client: OkHttpClient = network.client.newBuilder()
+    override val client: OkHttpClient = network.cloudflareClient.newBuilder()
         .rateLimit(2)
         .addNetworkInterceptor { chain ->
             val originalRequest = chain.request()
@@ -92,14 +90,13 @@ abstract class GroupLe(
 
     override fun searchMangaFromElement(element: Element): SManga = popularMangaFromElement(element)
 
-    // max 200 results (exception OrderBy)
     override fun searchMangaNextPageSelector() = popularMangaNextPageSelector()
 
     override fun mangaDetailsParse(document: Document): SManga {
         val infoElement = document.select(".expandable").first()
         val rawCategory = infoElement.select("span.elem_category").text()
         val category = if (rawCategory.isNotEmpty()) {
-            rawCategory.lowercase()
+            rawCategory
         } else {
             "манга"
         }
@@ -120,11 +117,15 @@ abstract class GroupLe(
             ratingValue > 0.5 -> "✬☆☆☆☆"
             else -> "☆☆☆☆☆"
         }
-        val rawAgeValue = infoElement.select(".elem_limitation .element-link").first()?.text()
+        val rawAgeValue = infoElement.select(".elem_limitation .element-link").first()?.text() ?: ""
         val rawAgeStop = when (rawAgeValue) {
+            "NC-17" -> "18+"
+            "R18+" -> "18+"
+            "R" -> "16+"
+            "G" -> "16+"
             "PG" -> "16+"
             "PG-13" -> "12+"
-            else -> "0+"
+            else -> rawAgeValue
         }
         val manga = SManga.create()
         var authorElement = infoElement.select("span.elem_author").first()?.text()
@@ -134,23 +135,26 @@ abstract class GroupLe(
         manga.title = document.select("h1.names .name").text()
         manga.author = authorElement
         manga.artist = infoElement.select("span.elem_illustrator").first()?.text()
-        manga.genre = category + ", " + rawAgeStop + ", " + infoElement.select("span.elem_genre").text().split(",").joinToString { it.trim() }
+        manga.genre = (category + ", " + rawAgeStop + ", " + infoElement.select("span.elem_genre").text() + ", " + infoElement.select("span.elem_tag").text()).split(", ").filter { it.isNotEmpty() }.joinToString { it.trim().lowercase() }
         var altName = ""
         if (infoElement.select(".another-names").isNotEmpty()) {
             altName = "Альтернативные названия:\n" + infoElement.select(".another-names").text() + "\n\n"
         }
         manga.description = ratingStar + " " + ratingValue + "[ⓘ" + ratingValueOver + "]" + " (голосов: " + ratingVotes + ")\n" + altName + document.select("div#tab-description  .manga-description").text()
-        manga.status = parseStatus(infoElement.html())
+        manga.status = when {
+            infoElement.html().contains("Запрещена публикация произведения по копирайту") || infoElement.html().contains("ЗАПРЕЩЕНА К ПУБЛИКАЦИИ НА ТЕРРИТОРИИ РФ!") -> SManga.LICENSED
+            infoElement.html().contains("<b>Сингл</b>") -> SManga.COMPLETED
+            else ->
+                when (infoElement.select("p:contains(Перевод:) span").first()?.text()) {
+                    "продолжается" -> SManga.ONGOING
+                    "начат" -> SManga.ONGOING
+                    "переведено" -> SManga.COMPLETED
+                    "приостановлен" -> SManga.ON_HIATUS
+                    else -> SManga.UNKNOWN
+                }
+        }
         manga.thumbnail_url = infoElement.select("img").attr("data-full")
         return manga
-    }
-
-    private fun parseStatus(element: String): Int = when {
-        element.contains("Запрещена публикация произведения по копирайту") || element.contains("ЗАПРЕЩЕНА К ПУБЛИКАЦИИ НА ТЕРРИТОРИИ РФ!") -> SManga.LICENSED
-        element.contains("<b>Перевод:</b> продолжается") -> SManga.ONGOING
-        element.contains("<b>Сингл</b>") || element.contains("<b>Перевод:</b> завер") || element.contains("<b>Перевод:</b> переведено") -> SManga.COMPLETED
-        element.contains("<b>Перевод:</b> приостановлен") -> SManga.ON_HIATUS
-        else -> SManga.UNKNOWN
     }
 
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> {
@@ -259,7 +263,7 @@ abstract class GroupLe(
             }
             if (!url.contains("://"))
                 url = "https:$url"
-            pages.add(Page(i++, "", url))
+            pages.add(Page(i++, "", url.replace("//resh", "//h")))
         }
         return pages
     }

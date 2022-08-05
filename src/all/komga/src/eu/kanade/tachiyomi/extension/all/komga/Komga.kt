@@ -47,7 +47,7 @@ import java.util.Locale
 
 open class Komga(suffix: String = "") : ConfigurableSource, UnmeteredSource, HttpSource() {
     override fun popularMangaRequest(page: Int): Request =
-        GET("$baseUrl/api/v1/series?page=${page - 1}&deleted=false", headers)
+        GET("$baseUrl/api/v1/series?page=${page - 1}&deleted=false&sort=metadata.titleSort,asc", headers)
 
     override fun popularMangaParse(response: Response): MangasPage =
         processSeriesPage(response)
@@ -157,7 +157,7 @@ open class Komga(suffix: String = "") : ConfigurableSource, UnmeteredSource, Htt
                 }
                 is Filter.Sort -> {
                     var sortCriteria = when (filter.state?.index) {
-                        0 -> "metadata.titleSort"
+                        0 -> if (type == "series") "metadata.titleSort" else "name"
                         1 -> "createdDate"
                         2 -> "lastModifiedDate"
                         else -> ""
@@ -268,9 +268,12 @@ open class Komga(suffix: String = "") : ConfigurableSource, UnmeteredSource, Htt
             title = metadata.title
             url = "$baseUrl/api/v1/series/$id"
             thumbnail_url = "$url/thumbnail"
-            status = when (metadata.status) {
-                "ONGOING" -> SManga.ONGOING
-                "ENDED" -> SManga.COMPLETED
+            status = when {
+                metadata.status == "ENDED" && metadata.totalBookCount != null && booksCount < metadata.totalBookCount -> SManga.PUBLISHING_FINISHED
+                metadata.status == "ENDED" -> SManga.COMPLETED
+                metadata.status == "ONGOING" -> SManga.ONGOING
+                metadata.status == "ABANDONED" -> SManga.CANCELLED
+                metadata.status == "HIATUS" -> SManga.ON_HIATUS
                 else -> SManga.UNKNOWN
             }
             genre = (metadata.genres + metadata.tags + booksMetadata.tags).distinct().joinToString(", ")

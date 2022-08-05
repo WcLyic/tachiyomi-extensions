@@ -13,15 +13,12 @@ import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
-import okhttp3.Interceptor
-import okhttp3.MediaType.Companion.toMediaType
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import eu.kanade.tachiyomi.util.asJsoup
-import java.io.IOException
 import kotlinx.serialization.decodeFromString
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
@@ -35,6 +32,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Headers
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -43,12 +42,12 @@ import rx.Observable
 import uy.kohesive.injekt.Injekt
 import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.io.IOException
 import java.text.SimpleDateFormat
 import java.util.Locale
 import java.util.concurrent.TimeUnit
 import kotlin.math.absoluteValue
 import kotlin.random.Random
-
 
 abstract class LibGroup(
     override val name: String,
@@ -79,11 +78,11 @@ abstract class LibGroup(
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
         .connectTimeout(30, TimeUnit.SECONDS)
         .readTimeout(1, TimeUnit.MINUTES)
-        .rateLimit(3,2)
+        .rateLimit(2)
         .addInterceptor { chain ->
             val response = chain.proceed(chain.request())
             if (response.code == 419)
-                    throw IOException("HTTP error ${response.code}. Для завершения авторизации необходимо перезапустить приложение с полной остановкой.")
+                throw IOException("HTTP error ${response.code}. Для завершения авторизации необходимо перезапустить приложение с полной остановкой.")
             return@addInterceptor response
         }
         .build()
@@ -144,7 +143,7 @@ abstract class LibGroup(
     }
 
     // Popular
-    override fun popularMangaRequest(page: Int) = GET("$baseUrl/login", headers)
+    override fun popularMangaRequest(page: Int) = GET(baseUrl, headers)
     override fun fetchPopularManga(page: Int): Observable<MangasPage> {
         if (csrfToken.isEmpty()) {
             return client.newCall(popularMangaRequest(page))
@@ -248,11 +247,11 @@ abstract class LibGroup(
             SManga.LICENSED
         } else
             when {
-                StatusTranslate.contains("завершен" ) && StatusTitle.contains("приостановлен" ) || StatusTranslate.contains("заморожен" ) || StatusTranslate.contains("заброшен" ) -> SManga.ON_HIATUS
-                StatusTranslate.contains("завершен" ) && StatusTitle.contains("выпуск прекращён" ) -> SManga.CANCELLED
-                StatusTranslate.contains("продолжается" ) -> SManga.ONGOING
-                StatusTranslate.contains("завершен" ) -> SManga.COMPLETED
-                else -> when (StatusTitle){
+                StatusTranslate.contains("завершен") && StatusTitle.contains("приостановлен") || StatusTranslate.contains("заморожен") || StatusTranslate.contains("заброшен") -> SManga.ON_HIATUS
+                StatusTranslate.contains("завершен") && StatusTitle.contains("выпуск прекращён") -> SManga.CANCELLED
+                StatusTranslate.contains("продолжается") -> SManga.ONGOING
+                StatusTranslate.contains("завершен") -> SManga.COMPLETED
+                else -> when (StatusTitle) {
                     "онгоинг" -> SManga.ONGOING
                     "анонс" -> SManga.ONGOING
                     "завершён" -> SManga.COMPLETED
@@ -280,7 +279,7 @@ abstract class LibGroup(
         return client.newCall(mangaDetailsRequest(manga))
             .asObservable().doOnNext { response ->
                 if (!response.isSuccessful) {
-                    if (response.code == 404 && response.asJsoup().select("#show-login-button").isNotEmpty()) throw Exception("HTTP error ${response.code}. Для просмотра 18+ контента необходима авторизация через WebView") else throw Exception("HTTP error ${response.code}")
+                    if (response.code == 404 && response.asJsoup().select(".m-menu__sign-in").isNotEmpty()) throw Exception("HTTP error ${response.code}. Для просмотра 18+ контента необходима авторизация через WebView") else throw Exception("HTTP error ${response.code}")
                 }
             }
             .map { response ->
@@ -291,7 +290,7 @@ abstract class LibGroup(
     override fun chapterListParse(response: Response): List<SChapter> {
         val document = response.asJsoup()
         val rawAgeStop = document.select(".media-short-info .media-short-info__item[data-caution]").text()
-        if (rawAgeStop == "18+" && document.select("#show-login-button").isNotEmpty())
+        if (rawAgeStop == "18+" && document.select(".m-menu__sign-in").isNotEmpty())
             throw Exception("Для просмотра 18+ контента необходима авторизация через WebView")
         val redirect = document.html()
         if (redirect.contains("paper empty section")) {
@@ -325,7 +324,7 @@ abstract class LibGroup(
         return client.newCall(mangaDetailsRequest(manga))
             .asObservable().doOnNext { response ->
                 if (!response.isSuccessful) {
-                    if (response.code == 404 && response.asJsoup().select("#show-login-button").isNotEmpty()) throw Exception("HTTP error ${response.code}. Для просмотра 18+ контента необходима авторизация через WebView") else throw Exception("HTTP error ${response.code}")
+                    if (response.code == 404 && response.asJsoup().select(".m-menu__sign-in").isNotEmpty()) throw Exception("HTTP error ${response.code}. Для просмотра 18+ контента необходима авторизация через WebView") else throw Exception("HTTP error ${response.code}")
                 }
             }
             .map { response ->
@@ -334,7 +333,7 @@ abstract class LibGroup(
     }
 
     private fun sortChaptersByTranslator
-            (sortingList: String?, chaptersList: JsonArray?, slug: String, branches: List<JsonElement>): List<SChapter>? {
+    (sortingList: String?, chaptersList: JsonArray?, slug: String, branches: List<JsonElement>): List<SChapter>? {
         var chapters: List<SChapter>? = null
         val volume = "(?<=/v)[0-9]+(?=/c[0-9]+)".toRegex()
         val tempChaptersList = mutableListOf<SChapter>()
@@ -372,7 +371,7 @@ abstract class LibGroup(
     }
 
     private fun chapterFromElement
-            (chapterItem: JsonElement, sortingList: String?, slug: String, teamIdParam: Int? = null, branches: List<JsonElement>? = null, teams: List<JsonElement>? = null, chaptersList: JsonArray? = null): SChapter {
+    (chapterItem: JsonElement, sortingList: String?, slug: String, teamIdParam: Int? = null, branches: List<JsonElement>? = null, teams: List<JsonElement>? = null, chaptersList: JsonArray? = null): SChapter {
         val chapter = SChapter.create()
 
         val volume = chapterItem.jsonObject["chapter_volume"]!!.jsonPrimitive.int
@@ -417,10 +416,10 @@ abstract class LibGroup(
     override fun pageListParse(response: Response): List<Page> {
         val document = response.asJsoup()
 
-        //redirect Регистрация 18+
+        // redirect Регистрация 18+
         val redirect = document.html()
         if (!redirect.contains("window.__info")) {
-            if (redirect.contains("hold-transition login-page")) {
+            if (redirect.contains("auth-layout")) {
                 throw Exception("Для просмотра 18+ контента необходима авторизация через WebView")
             }
         }

@@ -7,12 +7,12 @@ import eu.kanade.tachiyomi.source.model.FilterList
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 
-class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru"){
+class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
 
     override val id: Long = 1809051393403180443
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val url = "$baseUrl/search/advanced".toHttpUrlOrNull()!!.newBuilder()
+        val url = "$baseUrl/search/advanced?offset=${70 * (page - 1)}".toHttpUrlOrNull()!!.newBuilder()
         (if (filters.isEmpty()) getFilterList() else filters).forEach { filter ->
             when (filter) {
                 is GenreList -> filter.state.forEach { genre ->
@@ -50,9 +50,9 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru"){
         if (query.isNotEmpty()) {
             url.addQueryParameter("q", query)
         }
-        return if (url.toString().contains("?"))
+        return if (url.toString().contains("&"))
             GET(url.toString().replace("=%3D", "="), headers)
-        else  popularMangaRequest(page)
+        else popularMangaRequest(page)
     }
 
     private class OrderBy : Filter.Select<String>(
