@@ -50,7 +50,7 @@ class Dmzj : ConfigurableSource, HttpSource() {
         val request = GET("https://manhua.idmzj.com/$slug/", headers)
         val html = client.newCall(request).execute().body.string()
         val start = "g_comic_id = \""
-                    url = "/comic/comic_$cid.json?version=2.7.019"
+        val startIndex = html.indexOf(start) + start.length
         val endIndex = html.indexOf('"', startIndex)
         return html.substring(startIndex, endIndex)
     }
