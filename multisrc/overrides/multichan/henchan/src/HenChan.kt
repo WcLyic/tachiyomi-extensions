@@ -1,9 +1,14 @@
 package eu.kanade.tachiyomi.extension.ru.henchan
 
 import android.annotation.SuppressLint
+import android.app.Application
+import android.content.SharedPreferences
+import android.widget.Toast
+import androidx.preference.EditTextPreference
 import eu.kanade.tachiyomi.multisrc.multichan.MultiChan
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservable
+import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.Page
@@ -16,17 +21,26 @@ import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 import java.net.URL
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
 
-class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
+class HenChan : MultiChan("HenChan", "http://y.hchan.live", "ru"), ConfigurableSource {
 
     override val id: Long = 5504588601186153612
 
-    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
+    private val preferences: SharedPreferences by lazy {
+        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
 
+    private val domain = preferences.getString(DOMAIN_TITLE, DOMAIN_DEFAULT)!!
+
+    override val baseUrl = domain
+
+    override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = if (query.isNotEmpty()) {
             "$baseUrl/?do=search&subaction=search&story=$query&search_start=$page"
         } else {
@@ -76,13 +90,22 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
         val isExHenManga = this.contains("/manganew_thumbs_blur/")
         val regex = "(?<=/)manganew_thumbs\\w*?(?=/)".toRegex(RegexOption.IGNORE_CASE)
         return this.replace(regex, "showfull_retina/manga")
-            .replace("_".plus(URL(baseUrl).host), "_hentaichan.ru") // domain-related replacing for very old mangas
-            .plus(if (isExHenManga) { "#" } else { "" }) // # for later so we know what type manga is it
+            .replace(
+                "_".plus(URL(baseUrl).host),
+                "_hentaichan.ru",
+            ) // domain-related replacing for very old mangas
+            .plus(
+                if (isExHenManga) {
+                    "#"
+                } else {
+                    ""
+                },
+            ) // # for later so we know what type manga is it
     }
 
     override fun popularMangaFromElement(element: Element): SManga {
         val manga = super.popularMangaFromElement(element)
-        manga.thumbnail_url = element.select("img").first().attr("src").getHQThumbnail()
+        manga.thumbnail_url = element.select("img").first()!!.attr("src").getHQThumbnail()
         return manga
     }
 
@@ -98,17 +121,19 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
                 if (!response.isSuccessful) {
                     response.close()
                     // Error message for exceeding last page
-                    if (response.code == 404)
+                    if (response.code == 404) {
                         Observable.just(
                             listOf(
                                 SChapter.create().apply {
                                     url = manga.url
                                     name = "Chapter"
                                     chapter_number = 1f
-                                }
-                            )
+                                },
+                            ),
                         )
-                    else throw Exception("HTTP error ${response.code}")
+                    } else {
+                        throw Exception("HTTP error ${response.code}")
+                    }
                 }
             }
             .map { response ->
@@ -154,7 +179,8 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
                 .replace("\\\"", "\"")
                 .replace("\\'", "'")
             chap.chapter_number = 1F
-            chap.date_upload = Date().time // setting to current date because of a sorting in the "Recent updates" section
+            chap.date_upload =
+                Date().time // setting to current date because of a sorting in the "Recent updates" section
             return listOf(chap)
         }
 
@@ -163,20 +189,20 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
         result.addAll(
             document.select(chapterListSelector()).map {
                 chapterFromElement(it)
-            }
+            },
         )
 
         var url = document.select("div#pagination_related a:contains(Вперед)").attr("href")
         while (url.isNotBlank()) {
             val get = GET(
                 "${response.request.url}/$url",
-                headers = headers
+                headers = headers,
             )
             val nextPage = client.newCall(get).execute().asJsoup()
             result.addAll(
                 nextPage.select(chapterListSelector()).map {
                     chapterFromElement(it)
-                }
+                },
             )
 
             url = nextPage.select("div#pagination_related a:contains(Вперед)").attr("href")
@@ -190,8 +216,11 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
         chapter.setUrlWithoutDomain(element.select("h2 a").attr("href"))
         val chapterName = element.select("h2 a").attr("title")
         chapter.name = chapterName
-        chapter.chapter_number = "(глава\\s|часть\\s)(\\d+)".toRegex(RegexOption.IGNORE_CASE).find(chapterName)?.groupValues?.get(2)?.toFloat() ?: -1F
-        chapter.date_upload = Date().time // setting to current date because of a sorting in the "Recent updates" section
+        chapter.chapter_number =
+            "(глава\\s|часть\\s)([0-9]+\\.?[0-9]*)".toRegex(RegexOption.IGNORE_CASE)
+                .find(chapterName)?.groupValues?.get(2)?.toFloat() ?: -1F
+        chapter.date_upload =
+            Date().time // setting to current date because of a sorting in the "Recent updates" section
         return chapter
     }
 
@@ -205,7 +234,7 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val html = response.body!!.string()
+        val html = response.body.string()
         val prefix = "fullimg\": ["
         val beginIndex = html.indexOf(prefix) + prefix.length
         val endIndex = html.indexOf("]", beginIndex)
@@ -217,24 +246,40 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
         return pageUrls.mapIndexed { i, url -> Page(i, "", url) }
     }
 
-    private class Genre(val id: String, @SuppressLint("DefaultLocale") name: String = id.replace('_', ' ').capitalize()) : Filter.TriState(name)
+    private class Genre(
+        val id: String,
+        @SuppressLint("DefaultLocale") name: String = id.replace('_', ' ').capitalize(),
+    ) : Filter.TriState(name)
+
     private class GenreList(genres: List<Genre>) : Filter.Group<Genre>("Тэги", genres)
     private class OrderBy : UriPartFilter(
         "Сортировка",
         arrayOf("Дата", "Популярность", "Алфавит"),
         arrayOf("&n=dateasc" to "", "&n=favasc" to "&n=favdesc", "&n=abcdesc" to "&n=abcasc"),
-        arrayOf("manga/new&n=dateasc" to "manga/new", "manga/new&n=favasc" to "mostfavorites&sort=manga", "manga/new&n=abcdesc" to "manga/new&n=abcasc")
+        arrayOf(
+            "manga/new&n=dateasc" to "manga/new",
+            "manga/new&n=favasc" to "mostfavorites&sort=manga",
+            "manga/new&n=abcdesc" to "manga/new&n=abcasc",
+        ),
     )
 
-    private open class UriPartFilter(displayName: String, sortNames: Array<String>, val withGenres: Array<Pair<String, String>>, val withoutGenres: Array<Pair<String, String>>) :
+    private open class UriPartFilter(
+        displayName: String,
+        sortNames: Array<String>,
+        val withGenres: Array<Pair<String, String>>,
+        val withoutGenres: Array<Pair<String, String>>,
+    ) :
         Filter.Sort(displayName, sortNames, Selection(1, false)) {
-        fun toUriPartWithGenres() = if (state!!.ascending) withGenres[state!!.index].first else withGenres[state!!.index].second
-        fun toUriPartWithoutGenres() = if (state!!.ascending) withoutGenres[state!!.index].first else withoutGenres[state!!.index].second
+        fun toUriPartWithGenres() =
+            if (state!!.ascending) withGenres[state!!.index].first else withGenres[state!!.index].second
+
+        fun toUriPartWithoutGenres() =
+            if (state!!.ascending) withoutGenres[state!!.index].first else withoutGenres[state!!.index].second
     }
 
     override fun getFilterList() = FilterList(
         OrderBy(),
-        GenreList(getGenreList())
+        GenreList(getGenreList()),
     )
 
     private fun getGenreList() = listOf(
@@ -413,6 +458,31 @@ class HenChan : MultiChan("HenChan", "https://y.hentaichan.live", "ru") {
         Genre("юмор"),
         Genre("юри"),
         Genre("яндере"),
-        Genre("яой")
+        Genre("яой"),
     )
+
+    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
+        EditTextPreference(screen.context).apply {
+            key = DOMAIN_TITLE
+            this.title = DOMAIN_TITLE
+            summary = domain
+            this.setDefaultValue(DOMAIN_DEFAULT)
+            dialogTitle = DOMAIN_TITLE
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val res = preferences.edit().putString(DOMAIN_TITLE, newValue as String).commit()
+                    Toast.makeText(screen.context, "Для смены домена необходимо перезапустить приложение с полной остановкой.", Toast.LENGTH_LONG).show()
+                    res
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }.let(screen::addPreference)
+    }
+
+    companion object {
+        private const val DOMAIN_TITLE = "Домен"
+        private const val DOMAIN_DEFAULT = "http://y.hchan.live"
+    }
 }

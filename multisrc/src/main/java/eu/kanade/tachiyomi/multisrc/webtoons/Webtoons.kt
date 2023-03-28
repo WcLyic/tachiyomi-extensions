@@ -1,12 +1,6 @@
 package eu.kanade.tachiyomi.multisrc.webtoons
 
-import android.app.Application
-import android.content.SharedPreferences
-import android.net.Uri
-import androidx.preference.PreferenceScreen
-import androidx.preference.SwitchPreferenceCompat
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter.Header
 import eu.kanade.tachiyomi.source.model.Filter.Select
 import eu.kanade.tachiyomi.source.model.Filter.Separator
@@ -25,20 +19,19 @@ import okhttp3.CookieJar
 import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
-import uy.kohesive.injekt.Injekt
-import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
+import java.net.SocketException
 import java.text.ParseException
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
-import kotlin.math.ceil
 
 open class Webtoons(
     override val name: String,
@@ -46,8 +39,8 @@ open class Webtoons(
     override val lang: String,
     open val langCode: String = lang,
     open val localeForCookie: String = lang,
-    private val dateFormat: SimpleDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.ENGLISH)
-) : ConfigurableSource, ParsedHttpSource() {
+    private val dateFormat: SimpleDateFormat = SimpleDateFormat("MMM d, yyyy", Locale.ENGLISH),
+) : ParsedHttpSource() {
 
     override val supportsLatest = true
 
@@ -66,12 +59,22 @@ open class Webtoons(
                             .value(localeForCookie)
                             .name("needGDPR")
                             .value("false")
-                            .build()
+                            .build(),
                     )
                 }
-            }
+            },
         )
+        .addInterceptor(::sslRetryInterceptor)
         .build()
+
+    // m.webtoons.com throws an SSL error that can be solved by a simple retry
+    private fun sslRetryInterceptor(chain: Interceptor.Chain): Response {
+        return try {
+            chain.proceed(chain.request())
+        } catch (e: SocketException) {
+            chain.proceed(chain.request())
+        }
+    }
 
     private val day: String
         get() {
@@ -89,15 +92,11 @@ open class Webtoons(
             }
         }
 
-    private val json: Json by injectLazy()
+    val json: Json by injectLazy()
 
     override fun popularMangaSelector() = "not using"
 
     override fun latestUpdatesSelector() = "div#dailyList > $day li > a"
-
-    private val preferences: SharedPreferences by lazy {
-        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
-    }
 
     override fun headersBuilder(): Headers.Builder = super.headersBuilder()
         .add("Referer", "https://www.webtoons.com/$langCode/")
@@ -105,23 +104,6 @@ open class Webtoons(
     protected val mobileHeaders: Headers = super.headersBuilder()
         .add("Referer", "https://m.webtoons.com")
         .build()
-
-    override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val authorsNotesPref = SwitchPreferenceCompat(screen.context).apply {
-            key = SHOW_AUTHORS_NOTES_KEY
-            title = "Show author's notes"
-            summary = "Enable to see the author's notes at the end of chapters (if they're there)."
-            setDefaultValue(false)
-
-            setOnPreferenceChangeListener { _, newValue ->
-                val checkValue = newValue as Boolean
-                preferences.edit().putBoolean(SHOW_AUTHORS_NOTES_KEY, checkValue).commit()
-            }
-        }
-        screen.addPreference(authorsNotesPref)
-    }
-
-    private fun showAuthorsNotesPref() = preferences.getBoolean(SHOW_AUTHORS_NOTES_KEY, false)
 
     override fun popularMangaRequest(page: Int) = GET("$baseUrl/$langCode/dailySchedule", headers)
 
@@ -131,7 +113,7 @@ open class Webtoons(
         var maxChild = 0
 
         // For ongoing webtoons rows are ordered by descending popularity, count how many rows there are
-        document.select("div#dailyList > div").forEach { day ->
+        document.select("div#dailyList .daily_section").forEach { day ->
             day.select("li").count().let { rowCount ->
                 if (rowCount > maxChild) maxChild = rowCount
             }
@@ -139,7 +121,7 @@ open class Webtoons(
 
         // Process each row
         for (i in 1..maxChild) {
-            document.select("div#dailyList > div li:nth-child($i) a").map { mangas.add(popularMangaFromElement(it)) }
+            document.select("div#dailyList .daily_section li:nth-child($i) a").map { mangas.add(popularMangaFromElement(it)) }
         }
 
         // Add completed webtoons, no sorting needed
@@ -167,8 +149,9 @@ open class Webtoons(
     override fun latestUpdatesNextPageSelector(): String? = null
 
     override fun fetchSearchManga(page: Int, query: String, filters: FilterList): Observable<MangasPage> {
-        if (!query.startsWith(URL_SEARCH_PREFIX))
+        if (!query.startsWith(URL_SEARCH_PREFIX)) {
             return super.fetchSearchManga(page, query, filters)
+        }
 
         val emptyResult = Observable.just(MangasPage(emptyList(), false))
 
@@ -182,9 +165,9 @@ open class Webtoons(
             val title_no = url.queryParameter("title_no")
             val couldBeWebtoonOrEpisode = title_no != null && (url.pathSegments.size >= 3 && url.pathSegments.last().isNotEmpty())
             val isThisLang = "$url".startsWith("$baseUrl/$langCode")
-            if (! (couldBeWebtoonOrEpisode && isThisLang))
+            if (!(couldBeWebtoonOrEpisode && isThisLang)) {
                 emptyResult
-            else {
+            } else {
                 val potentialUrl = "${webtoonPath(url)}?title_no=$title_no"
                 fetchMangaDetails(SManga.create().apply { this.url = potentialUrl }).map {
                     it.url = potentialUrl
@@ -204,7 +187,7 @@ open class Webtoons(
         return GET(url.toString(), headers)
     }
 
-    override fun searchMangaSelector() = "#content > div.card_wrap.search li a"
+    override fun searchMangaSelector() = "#content > div.card_wrap.search ul:not(#filterLayer) li a"
 
     override fun searchMangaFromElement(element: Element): SManga = popularMangaFromElement(element)
 
@@ -213,7 +196,7 @@ open class Webtoons(
     open fun parseDetailsThumbnail(document: Document): String? {
         val picElement = document.select("#content > div.cont_box > div.detail_body")
         val discoverPic = document.select("#content > div.cont_box > div.detail_header > span.thmb")
-        return discoverPic.select("img").not("[alt='Representative image']").first()?.attr("src") ?: picElement.attr("style")?.substringAfter("url(")?.substringBeforeLast(")")
+        return discoverPic.select("img").not("[alt='Representative image']").first()?.attr("src") ?: picElement.attr("style").substringAfter("url(")?.substringBeforeLast(")")
     }
 
     override fun mangaDetailsParse(document: Document): SManga {
@@ -221,7 +204,7 @@ open class Webtoons(
         val infoElement = document.select("#_asideDetail")
 
         val manga = SManga.create()
-        manga.title = document.selectFirst("h1.subj, h3.subj").text()
+        manga.title = document.selectFirst("h1.subj, h3.subj")!!.text()
         manga.author = detailElement.select(".author:nth-of-type(1)").first()?.ownText()
         manga.artist = detailElement.select(".author:nth-of-type(2)").first()?.ownText() ?: manga.author
         manga.genre = detailElement.select(".genre").joinToString(", ") { it.text() }
@@ -237,7 +220,7 @@ open class Webtoons(
         else -> SManga.UNKNOWN
     }
 
-    override fun imageUrlParse(document: Document): String = document.select("img").first().attr("src")
+    override fun imageUrlParse(document: Document): String = document.select("img").first()!!.attr("src")
 
     // Filters
 
@@ -245,7 +228,7 @@ open class Webtoons(
         return FilterList(
             Header("Query can not be blank"),
             Separator(),
-            SearchType(getOfficialList())
+            SearchType(getOfficialList()),
         )
     }
 
@@ -256,7 +239,7 @@ open class Webtoons(
     private fun getOfficialList() = arrayOf(
         Pair("Any", ""),
         Pair("Official only", "WEBTOON"),
-        Pair("Challenge only", "CHALLENGE")
+        Pair("Challenge only", "CHALLENGE"),
     )
 
     open class UriPartFilter(displayName: String, private val vals: Array<Pair<String, String>>) :
@@ -277,7 +260,7 @@ open class Webtoons(
         if (element.select(".ico_bgm").isNotEmpty()) {
             chapter.name += " ♫"
         }
-        chapter.date_upload = element.select("a > div.row > div.col > div.sub_info > span.date").text()?.let { chapterParseDate(it) } ?: 0
+        chapter.date_upload = element.select("a > div.row > div.col > div.sub_info > span.date").text().let { chapterParseDate(it) } ?: 0
         return chapter
     }
 
@@ -291,48 +274,8 @@ open class Webtoons(
 
     override fun chapterListRequest(manga: SManga) = GET("https://m.webtoons.com" + manga.url, mobileHeaders)
 
-    private fun wordwrap(t: String, lineWidth: Int) = buildString {
-        // TODO: Split off into library file or something, because Tapastic is using the exact same wordwrap and toImage functions
-        //  src/en/tapastic/src/eu/kanade/tachiyomi/extension/en/tapastic/Tapastic.kt
-        val text = t.replace("\n", "\n ")
-        var charCount = 0
-        text.split(" ").forEach { w ->
-            if (w.contains("\n")) {
-                charCount = 0
-            }
-            if (charCount > lineWidth) {
-                append("\n")
-                charCount = 0
-            }
-            append("$w ")
-            charCount += w.length + 1
-        }
-    }
-
-    private fun toImage(t: String, fontSize: Int, bold: Boolean = false): String {
-        val text = wordwrap(t.replace("&amp;", "&").replace("\\s*<br>\\s*".toRegex(), "\n"), 65)
-        val imgHeight = (text.lines().size + 2) * fontSize * 1.3
-        return "https://placehold.jp/" + fontSize + "/ffffff/000000/1500x" + ceil(imgHeight).toInt() + ".png?" +
-            "css=%7B%22text-align%22%3A%22%20left%22%2C%22padding-left%22%3A%22%203%25%22" + (if (bold) "%2C%22font-weight%22%3A%22%20600%22" else "") + "%7D&" +
-            "text=" + Uri.encode(text)
-    }
-
     override fun pageListParse(document: Document): List<Page> {
         var pages = document.select("div#_imageList > img").mapIndexed { i, element -> Page(i, "", element.attr("data-url")) }
-
-        if (showAuthorsNotesPref()) {
-            val note = document.select("div.comment_area div.info_area p").text()
-
-            if (note.isNotEmpty()) {
-                val noteImage = toImage(note, 42)
-
-                val creator = document.select("div.creator_note span.author a").text().trim()
-                val creatorImage = toImage("Author's Notes from $creator", 43, true)
-
-                pages = pages + Page(pages.size, "", creatorImage)
-                pages = pages + Page(pages.size, "", noteImage)
-            }
-        }
 
         if (pages.isNotEmpty()) { return pages }
 
@@ -345,7 +288,7 @@ open class Webtoons(
         val motiontoonPath = motiontoonPathRegex.find(docString)!!.destructured.toList()[0]
         val motiontoonResponse = client.newCall(GET(docUrl, headers)).execute()
 
-        val motiontoonJson = json.parseToJsonElement(motiontoonResponse.body!!.string()).jsonObject
+        val motiontoonJson = json.parseToJsonElement(motiontoonResponse.body.string()).jsonObject
         val motiontoonImages = motiontoonJson["assets"]!!.jsonObject["image"]!!.jsonObject
 
         return motiontoonImages.entries
@@ -357,6 +300,5 @@ open class Webtoons(
 
     companion object {
         const val URL_SEARCH_PREFIX = "url:"
-        private const val SHOW_AUTHORS_NOTES_KEY = "showAuthorsNotes"
     }
 }

@@ -58,36 +58,41 @@ interface ThemeSourceGenerator {
             val additionalGradleOverrideText = File(additionalGradleOverridePath).readTextOrEmptyString()
             val placeholders = mapOf(
                 "SOURCEHOST" to source.baseUrl.toHttpUrlOrNull()?.host,
-                "SOURCESCHEME" to source.baseUrl.toHttpUrlOrNull()?.scheme
-            ).filter { it.value != null }
+                "SOURCESCHEME" to source.baseUrl.toHttpUrlOrNull()?.scheme,
+            )
+
+            val placeholdersStr = placeholders
+                .filter { it.value != null }
+                .map { "${" ".repeat(12)}${it.key}: \"${it.value}\"" }
+                .joinToString(",\n")
 
             gradle.writeText(
                 """
-                // THIS FILE IS AUTO-GENERATED; DO NOT EDIT
-                apply plugin: 'com.android.application'
-                apply plugin: 'kotlin-android'
-                apply plugin: 'kotlinx-serialization'
-
-                ext {
-                    extName = '${source.name}'
-                    pkgNameSuffix = '${pkgNameSuffix(source, ".")}'
-                    extClass = '.${source.className}'
-                    extFactory = '$themePkg'
-                    extVersionCode = ${baseVersionCode + source.overrideVersionCode + multisrcLibraryVersion}
-                    ${if (source.isNsfw) "isNsfw = true\n" else ""}
-                }
-                $defaultAdditionalGradleText
-                $additionalGradleOverrideText
-                apply from: "${'$'}rootDir/common.gradle"
-
-                android {
-                    defaultConfig {
-                        manifestPlaceholders += [
-${placeholders.map { "${" ".repeat(28)}${it.key}: \"${it.value}\""}.joinToString(",\n")}
-                        ]
-                    }
-                }
-                """.trimIndent()
+                |// THIS FILE IS AUTO-GENERATED; DO NOT EDIT
+                |apply plugin: 'com.android.application'
+                |apply plugin: 'kotlin-android'
+                |apply plugin: 'kotlinx-serialization'
+                |
+                |ext {
+                |    extName = '${source.name}'
+                |    pkgNameSuffix = '${pkgNameSuffix(source, ".")}'
+                |    extClass = '.${source.className}'
+                |    extFactory = '$themePkg'
+                |    extVersionCode = ${baseVersionCode + source.overrideVersionCode + multisrcLibraryVersion}
+                |    ${if (source.isNsfw) "isNsfw = true\n" else ""}
+                |}
+                |$defaultAdditionalGradleText
+                |$additionalGradleOverrideText
+                |apply from: "${'$'}rootDir/common.gradle"
+                |
+                |android {
+                |    defaultConfig {
+                |        manifestPlaceholders += [
+                |$placeholdersStr
+                |        ]
+                |    }
+                |}
+                """.trimMargin(),
             )
         }
 
@@ -101,15 +106,15 @@ ${placeholders.map { "${" ".repeat(28)}${it.key}: \"${it.value}\""}.joinToString
             } else {
                 androidManifestFile.writeText(
                     """
-                <?xml version="1.0" encoding="utf-8"?>
-                <!-- THIS FILE IS AUTO-GENERATED; DO NOT EDIT -->
-                <manifest package="eu.kanade.tachiyomi.extension" />
-                    """.trimIndent()
+                    |<?xml version="1.0" encoding="utf-8"?>
+                    |<!-- THIS FILE IS AUTO-GENERATED; DO NOT EDIT -->
+                    |<manifest package="eu.kanade.tachiyomi.extension" />
+                    """.trimMargin(),
                 )
             }
         }
 
-        private fun createGradleProject(source: ThemeSourceData, themePkg: String, themeClass: String, baseVersionCode: Int, userDir: String) {
+        fun createGradleProject(source: ThemeSourceData, themePkg: String, themeClass: String, baseVersionCode: Int, userDir: String) {
             // userDir = tachiyomi-extensions project root path
             val projectRootPath = "$userDir/generated-src/${pkgNameSuffix(source, "/")}"
             val projectSrcPath = "$projectRootPath/src/eu/kanade/tachiyomi/extension/${pkgNameSuffix(source, "/")}"
@@ -144,18 +149,16 @@ ${placeholders.map { "${" ".repeat(28)}${it.key}: \"${it.value}\""}.joinToString
         private fun copyThemeReadmes(userDir: String, themePkg: String, overridesPath: String, projectRootPath: String) {
             val sourcePath = "$userDir/multisrc/src/main/java/${themeSuffix(themePkg, "/")}"
 
-            val destinationPath = "$projectRootPath"
-            File(destinationPath).mkdirs()
+            File(projectRootPath).mkdirs()
 
             listOf(sourcePath, overridesPath).forEach { path ->
-                File(path)
-                    ?.list()
+                File(path).list()
                     ?.filter { it.endsWith("README.md") || it.endsWith("CHANGELOG.md") }
                     ?.forEach {
                         Files.copy(
                             File("$path/$it").toPath(),
-                            File("$destinationPath/$it").toPath(),
-                            StandardCopyOption.REPLACE_EXISTING
+                            File("$projectRootPath/$it").toPath(),
+                            StandardCopyOption.REPLACE_EXISTING,
                         )
                     }
             }
@@ -167,8 +170,7 @@ ${placeholders.map { "${" ".repeat(28)}${it.key}: \"${it.value}\""}.joinToString
             val themeDestPath = "$projectRootPath/src/${themeSuffix(themePkg, "/")}"
             File(themeDestPath).mkdirs()
 
-            File(themeSrcPath)
-                ?.list()
+            File(themeSrcPath).list()
                 ?.filter { it.endsWith(".kt") && !it.endsWith("Generator.kt") }
                 ?.forEach { Files.copy(File("$themeSrcPath/$it").toPath(), File("$themeDestPath/$it").toPath(), StandardCopyOption.REPLACE_EXISTING) }
         }
@@ -176,12 +178,13 @@ ${placeholders.map { "${" ".repeat(28)}${it.key}: \"${it.value}\""}.joinToString
         private fun copyResFiles(resOverridePath: String, defaultResPath: String, source: ThemeSourceData, projectRootPath: String): Any {
             // check if res override exists if not copy default res
             val resOverride = File(resOverridePath)
-            return if (resOverride.exists())
+            return if (resOverride.exists()) {
                 resOverride.copyRecursively(File("$projectRootPath/res"))
-            else
+            } else {
                 File(defaultResPath).let { defaultResFile ->
                     if (defaultResFile.exists()) defaultResFile.copyRecursively(File("$projectRootPath/res"))
                 }
+            }
         }
 
         private fun writeSourceClasses(projectSrcPath: String, srcOverridePath: String, source: ThemeSourceData, themePkg: String, themeClass: String) {
@@ -207,25 +210,26 @@ ${placeholders.map { "${" ".repeat(28)}${it.key}: \"${it.value}\""}.joinToString
                     }
 
                     """
-                    class ${source.className} : SourceFactory {
-                        override fun createSources() = listOf(
-                            ${sourceClasses.joinToString(",\n")}
-                        )
-                    }
-                    """.trimIndent()
+                    |class ${source.className} : SourceFactory {
+                    |    override fun createSources() = listOf(
+                    |        ${sourceClasses.joinToString(",\n")}
+                    |    )
+                    |}
+                    """.trimMargin()
                 }
             }
 
             File("$classPath/${source.className}.kt").writeText(
-                """/* ktlint-disable */
-                // THIS FILE IS AUTO-GENERATED; DO NOT EDIT
-                package eu.kanade.tachiyomi.extension.${pkgNameSuffix(source, ".")}
-
-                import eu.kanade.tachiyomi.multisrc.$themePkg.$themeClass
-                ${if (source is ThemeSourceData.MultiLang) "import eu.kanade.tachiyomi.source.SourceFactory" else ""}
-
-                ${factoryClassText()}
-                """.trimIndent()
+                """
+                |/* ktlint-disable */
+                |// THIS FILE IS AUTO-GENERATED; DO NOT EDIT
+                |package eu.kanade.tachiyomi.extension.${pkgNameSuffix(source, ".")}
+                |
+                |import eu.kanade.tachiyomi.multisrc.$themePkg.$themeClass
+                |${if (source is ThemeSourceData.MultiLang) "import eu.kanade.tachiyomi.source.SourceFactory" else ""}
+                |
+                |${factoryClassText()}
+                """.trimMargin(),
             )
         }
 
@@ -271,7 +275,7 @@ sealed class ThemeSourceData {
         val lang: String,
         override val isNsfw: Boolean = false,
         override val className: String = name.replace(" ", ""),
-        override val pkgName: String = className.toLowerCase(Locale.ENGLISH),
+        override val pkgName: String = className.lowercase(Locale.ENGLISH),
         override val sourceName: String = name,
         override val overrideVersionCode: Int = 0,
     ) : ThemeSourceData()
@@ -282,7 +286,7 @@ sealed class ThemeSourceData {
         val langs: List<String>,
         override val isNsfw: Boolean = false,
         override val className: String = name.replace(" ", "") + "Factory",
-        override val pkgName: String = className.substringBefore("Factory").toLowerCase(Locale.ENGLISH),
+        override val pkgName: String = className.substringBefore("Factory").lowercase(Locale.ENGLISH),
         override val sourceName: String = name,
         override val overrideVersionCode: Int = 0,
     ) : ThemeSourceData()

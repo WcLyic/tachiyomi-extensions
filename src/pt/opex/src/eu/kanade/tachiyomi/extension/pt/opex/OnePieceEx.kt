@@ -13,10 +13,13 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import okhttp3.Headers
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
+import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody.Companion.toResponseBody
 import org.jsoup.nodes.Document
 import org.jsoup.nodes.Element
 import rx.Observable
@@ -35,6 +38,7 @@ class OnePieceEx : ParsedHttpSource() {
     override val supportsLatest = false
 
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
+        .addInterceptor(::bypassHttp103Intercept)
         .rateLimit(1, 2, TimeUnit.SECONDS)
         .build()
 
@@ -170,20 +174,26 @@ class OnePieceEx : ParsedHttpSource() {
     override fun chapterListSelector() = "div.capitulos li.volume-capitulo"
 
     override fun chapterFromElement(element: Element): SChapter = SChapter.create().apply {
-        val mangaUrl = element.ownerDocument().location().toHttpUrlOrNull()!!
+        val mangaUrl = element.ownerDocument()!!.location().toHttpUrlOrNull()!!
 
         when (mangaUrl.queryParameter("type")!!) {
             "main" -> {
                 name = element.select("span").first()!!.text()
-                setUrlWithoutDomain(element.select("a.online").first()!!.attr("abs:href"))
+                element.selectFirst("a.online")!!.attr("abs:href")
+                    .substringBefore("?")
+                    .let { setUrlWithoutDomain(it) }
             }
             "sbs" -> {
                 name = element.select("div.volume-nome h2").first()!!.text()
-                setUrlWithoutDomain(element.select("header p.extra a:contains(SBS)").first()!!.attr("abs:href"))
+                element.selectFirst("header p.extra a:contains(SBS)")!!.attr("abs:href")
+                    .substringBefore("?")
+                    .let { setUrlWithoutDomain(it) }
             }
             "special" -> {
                 name = element.ownText()
-                setUrlWithoutDomain(element.select("a.online").first()!!.attr("abs:href"))
+                element.select("a.online").first()!!.attr("abs:href")
+                    .substringBefore("?")
+                    .let { setUrlWithoutDomain(it) }
             }
         }
 
@@ -221,6 +231,33 @@ class OnePieceEx : ParsedHttpSource() {
 
     override fun latestUpdatesNextPageSelector() = throw UnsupportedOperationException("Not used")
 
+    private fun bypassHttp103Intercept(chain: Interceptor.Chain): Response {
+        val request = chain.request()
+
+        if (request.url.pathSegments[0] != "mangas") {
+            return chain.proceed(request)
+        }
+
+        val bypasserUrl = "https://translate.google.com/translate".toHttpUrl().newBuilder()
+            .addQueryParameter("pto", "op")
+            .addQueryParameter("u", request.url.toString())
+            .build()
+
+        val bypasserRequest = request.newBuilder()
+            .url(bypasserUrl)
+            .build()
+
+        val bypasserResponse = chain.proceed(bypasserRequest)
+        val fixedBody = bypasserResponse.body.string()
+            .replace("onepieceex-net.translate.goog", baseUrl.removePrefix("https://"))
+            .toResponseBody(bypasserResponse.body.contentType())
+
+        return bypasserResponse.newBuilder()
+            .body(fixedBody)
+            .request(request)
+            .build()
+    }
+
     companion object {
         private const val ACCEPT = "text/html,application/xhtml+xml,application/xml;q=0.9," +
             "image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9"
@@ -233,7 +270,7 @@ class OnePieceEx : ParsedHttpSource() {
             "OPEX - DENSETSU NO SEKAI" to "https://onepieceex.net/mangareader/especiais/501/00.jpg",
             "OPEX - ESPECIAIS" to "https://onepieceex.net/mangareader/especiais/27/00.jpg",
             "ONE PIECE - ESPECIAIS DE ONE PIECE" to "https://onepieceex.net/mangareader/especiais/5/002.png",
-            "ONE PIECE - HISTÓRIAS DE CAPA" to "https://onepieceex.net/mangareader/mangas/428/00_c.jpg"
+            "ONE PIECE - HISTÓRIAS DE CAPA" to "https://onepieceex.net/mangareader/mangas/428/00_c.jpg",
         )
     }
 }

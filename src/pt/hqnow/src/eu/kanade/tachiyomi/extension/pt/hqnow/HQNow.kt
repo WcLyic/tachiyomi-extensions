@@ -2,7 +2,6 @@ package eu.kanade.tachiyomi.extension.pt.hqnow
 
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
-import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.network.interceptor.rateLimit
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -11,18 +10,17 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.decodeFromJsonElement
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.put
-import kotlinx.serialization.json.putJsonObject
 import okhttp3.MediaType.Companion.toMediaTypeOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import okhttp3.Response
-import rx.Observable
 import uy.kohesive.injekt.injectLazy
 import java.text.Normalizer
 import java.util.Locale
@@ -32,7 +30,7 @@ class HQNow : HttpSource() {
 
     override val name = "HQ Now!"
 
-    override val baseUrl = "http://www.hq-now.com"
+    override val baseUrl = "https://www.hq-now.com"
 
     override val lang = "pt-BR"
 
@@ -79,28 +77,19 @@ class HQNow : HttpSource() {
             """.trimIndent()
         }
 
-        val payload = buildJsonObject {
-            put("operationName", "getHqsByFilters")
-            put("query", query)
-            putJsonObject("variables") {
+        return queryRequest(
+            query = query,
+            operationName = "getHqsByFilters",
+            variables = buildJsonObject {
                 put("orderByViews", true)
                 put("loadCovers", true)
                 put("limit", 300)
-            }
-        }
-
-        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
-
-        val newHeaders = headersBuilder()
-            .add("Content-Length", body.contentLength().toString())
-            .add("Content-Type", body.contentType().toString())
-            .build()
-
-        return POST(GRAPHQL_URL, newHeaders, body)
+            },
+        )
     }
 
     override fun popularMangaParse(response: Response): MangasPage {
-        val result = json.parseToJsonElement(response.body!!.string()).jsonObject
+        val result = json.parseToJsonElement(response.body.string()).jsonObject
 
         val comicList = result["data"]!!.jsonObject["getHqsByFilters"]!!
             .let { json.decodeFromJsonElement<List<HqNowComicBookDto>>(it) }
@@ -125,23 +114,11 @@ class HQNow : HttpSource() {
             """.trimIndent()
         }
 
-        val payload = buildJsonObject {
-            put("operationName", "getRecentlyUpdatedHqs")
-            put("query", query)
-        }
-
-        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
-
-        val newHeaders = headersBuilder()
-            .add("Content-Length", body.contentLength().toString())
-            .add("Content-Type", body.contentType().toString())
-            .build()
-
-        return POST(GRAPHQL_URL, newHeaders, body)
+        return queryRequest(query = query, operationName = "getRecentlyUpdatedHqs")
     }
 
     override fun latestUpdatesParse(response: Response): MangasPage {
-        val result = json.parseToJsonElement(response.body!!.string()).jsonObject
+        val result = json.parseToJsonElement(response.body.string()).jsonObject
 
         val comicList = result["data"]!!.jsonObject["getRecentlyUpdatedHqs"]!!
             .let { json.decodeFromJsonElement<List<HqNowComicBookDto>>(it) }
@@ -166,26 +143,17 @@ class HQNow : HttpSource() {
             """.trimIndent()
         }
 
-        val payload = buildJsonObject {
-            put("operationName", "getHqsByName")
-            put("query", queryStr)
-            putJsonObject("variables") {
+        return queryRequest(
+            query = queryStr,
+            operationName = "getHqsByName",
+            variables = buildJsonObject {
                 put("name", query)
-            }
-        }
-
-        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
-
-        val newHeaders = headersBuilder()
-            .add("Content-Length", body.contentLength().toString())
-            .add("Content-Type", body.contentType().toString())
-            .build()
-
-        return POST(GRAPHQL_URL, newHeaders, body)
+            },
+        )
     }
 
     override fun searchMangaParse(response: Response): MangasPage {
-        val result = json.parseToJsonElement(response.body!!.string()).jsonObject
+        val result = json.parseToJsonElement(response.body.string()).jsonObject
 
         val comicList = result["data"]!!.jsonObject["getHqsByName"]!!
             .let { json.decodeFromJsonElement<List<HqNowComicBookDto>>(it) }
@@ -194,16 +162,9 @@ class HQNow : HttpSource() {
         return MangasPage(comicList, hasNextPage = false)
     }
 
-    // Workaround to allow "Open in browser" use the real URL.
-    override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return client.newCall(mangaDetailsApiRequest(manga))
-            .asObservableSuccess()
-            .map { response ->
-                mangaDetailsParse(response).apply { initialized = true }
-            }
-    }
+    override fun getMangaUrl(manga: SManga): String = baseUrl + manga.url
 
-    private fun mangaDetailsApiRequest(manga: SManga): Request {
+    override fun mangaDetailsRequest(manga: SManga): Request {
         val comicBookId = manga.url.substringAfter("/hq/").substringBefore("/")
 
         val query = buildQuery {
@@ -228,26 +189,17 @@ class HQNow : HttpSource() {
             """.trimIndent()
         }
 
-        val payload = buildJsonObject {
-            put("operationName", "getHqsById")
-            put("query", query)
-            putJsonObject("variables") {
+        return queryRequest(
+            query = query,
+            operationName = "getHqsById",
+            variables = buildJsonObject {
                 put("id", comicBookId.toInt())
-            }
-        }
-
-        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
-
-        val newHeaders = headersBuilder()
-            .add("Content-Length", body.contentLength().toString())
-            .add("Content-Type", body.contentType().toString())
-            .build()
-
-        return POST(GRAPHQL_URL, newHeaders, body)
+            },
+        )
     }
 
     override fun mangaDetailsParse(response: Response): SManga = SManga.create().apply {
-        val result = json.parseToJsonElement(response.body!!.string()).jsonObject
+        val result = json.parseToJsonElement(response.body.string()).jsonObject
         val comicBook = result["data"]!!.jsonObject["getHqsById"]!!.jsonArray[0].jsonObject
             .let { json.decodeFromJsonElement<HqNowComicBookDto>(it) }
 
@@ -258,10 +210,10 @@ class HQNow : HttpSource() {
         status = comicBook.status.orEmpty().toStatus()
     }
 
-    override fun chapterListRequest(manga: SManga): Request = mangaDetailsApiRequest(manga)
+    override fun chapterListRequest(manga: SManga): Request = mangaDetailsRequest(manga)
 
     override fun chapterListParse(response: Response): List<SChapter> {
-        val result = json.parseToJsonElement(response.body!!.string()).jsonObject
+        val result = json.parseToJsonElement(response.body.string()).jsonObject
         val comicBook = result["data"]!!.jsonObject["getHqsById"]!!.jsonArray[0].jsonObject
             .let { json.decodeFromJsonElement<HqNowComicBookDto>(it) }
 
@@ -278,7 +230,7 @@ class HQNow : HttpSource() {
                 "/chapter/${chapter.id}/page/1"
         }
 
-    // Pages
+    override fun getChapterUrl(chapter: SChapter): String = baseUrl + chapter.url
 
     override fun pageListRequest(chapter: SChapter): Request {
         val chapterId = chapter.url.substringAfter("/chapter/").substringBefore("/")
@@ -298,26 +250,17 @@ class HQNow : HttpSource() {
             """.trimIndent()
         }
 
-        val payload = buildJsonObject {
-            put("operationName", "getChapterById")
-            put("query", query)
-            putJsonObject("variables") {
+        return queryRequest(
+            query = query,
+            operationName = "getChapterById",
+            variables = buildJsonObject {
                 put("chapterId", chapterId.toInt())
-            }
-        }
-
-        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
-
-        val newHeaders = headersBuilder()
-            .add("Content-Length", body.contentLength().toString())
-            .add("Content-Type", body.contentType().toString())
-            .build()
-
-        return POST(GRAPHQL_URL, newHeaders, body)
+            },
+        )
     }
 
     override fun pageListParse(response: Response): List<Page> {
-        val result = json.parseToJsonElement(response.body!!.string()).jsonObject
+        val result = json.parseToJsonElement(response.body.string()).jsonObject
 
         val chapterDto = result["data"]!!.jsonObject["getChapterById"]!!
             .let { json.decodeFromJsonElement<HqNowChapterDto>(it) }
@@ -339,6 +282,23 @@ class HQNow : HttpSource() {
 
     private fun buildQuery(queryAction: () -> String) = queryAction().replace("%", "$")
 
+    private fun queryRequest(query: String, operationName: String, variables: JsonObject? = null): Request {
+        val payload = buildJsonObject {
+            put("operationName", operationName)
+            put("query", query)
+            variables?.let { put("variables", it) }
+        }
+
+        val body = payload.toString().toRequestBody(JSON_MEDIA_TYPE)
+
+        val newHeaders = headersBuilder()
+            .add("Content-Length", body.contentLength().toString())
+            .add("Content-Type", body.contentType().toString())
+            .build()
+
+        return POST(GRAPHQL_URL, newHeaders, body)
+    }
+
     private fun String.toSlug(): String {
         return Normalizer
             .normalize(this, Normalizer.Form.NFD)
@@ -355,8 +315,8 @@ class HQNow : HttpSource() {
     }
 
     companion object {
-        private const val STATIC_URL = "http://static.hq-now.com/"
-        private const val GRAPHQL_URL = "http://admin.hq-now.com/graphql"
+        private const val STATIC_URL = "https://static.hq-now.com/"
+        private const val GRAPHQL_URL = "https://admin.hq-now.com/graphql"
 
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaTypeOrNull()
     }

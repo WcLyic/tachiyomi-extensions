@@ -54,7 +54,7 @@ body:
       description: |
         You can find your Tachiyomi version in **More → About**.
       placeholder: |
-        Example: "0.13.5"
+        Example: "0.14.5"
     validations:
       required: true
 
@@ -82,11 +82,11 @@ body:
       label: Acknowledgements
       description: Your issue will be closed if you haven't done these steps.
       options:
-        - label: I have searched the existing issues and this is a new ticket, **NOT** a duplicate or related to another open issue.
+        - label: I have searched the existing issues and this is a new ticket, **NOT** a duplicate or related to another open or closed issue.
           required: true
         - label: I have written a short but informative title.
           required: true
-        - label: I have updated the app to version **[0.13.5](https://github.com/tachiyomiorg/tachiyomi/releases/latest)**.
+        - label: I have updated the app to version **[0.14.5](https://github.com/tachiyomiorg/tachiyomi/releases/latest)**.
           required: true
         - label: I have updated all installed extensions.
           required: true

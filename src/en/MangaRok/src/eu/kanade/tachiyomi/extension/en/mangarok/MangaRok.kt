@@ -52,14 +52,14 @@ class MangaRok : ParsedHttpSource() {
 
     override fun searchMangaFromElement(element: Element): SManga = SManga.create().apply {
         setUrlWithoutDomain(element.attr("abs:href"))
-        title = element.selectFirst(".mtitle").ownText()
-        thumbnail_url = element.selectFirst("img").attr("abs:data-src")
+        title = element.selectFirst(".mtitle")!!.ownText()
+        thumbnail_url = element.selectFirst("img")!!.attr("abs:data-src")
 
         genre = element.select(".tag.is-small").joinToString { it.text() }
-        status = element.selectFirst(".msub").text().substringBefore(" ").toStatus()
+        status = element.selectFirst(".msub")!!.text().substringBefore(" ").toStatus()
     }
 
-    override fun searchMangaNextPageSelector(): String? =
+    override fun searchMangaNextPageSelector(): String =
         ".buttons > a[rel=next]:not([disabled])"
 
     // Latest
@@ -72,26 +72,26 @@ class MangaRok : ParsedHttpSource() {
     override fun latestUpdatesFromElement(element: Element): SManga =
         searchMangaFromElement(element)
 
-    override fun latestUpdatesNextPageSelector(): String? =
+    override fun latestUpdatesNextPageSelector(): String =
         searchMangaNextPageSelector()
 
     // Details
     override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
-        title = document.selectFirst("h1").text()
-        thumbnail_url = document.selectFirst("img.athumbnail").attr("abs:data-src")
+        title = document.selectFirst("h1.title")!!.text()
+        thumbnail_url = document.selectFirst("img.athumbnail")!!.attr("abs:data-src")
 
-        val table = document.selectFirst(".table:not(.is-hoverable)")
-        artist = table.selectFirst("tr > td:first-child:contains(Artist:) + td > a").text()
-        author = table.selectFirst("tr > td:first-child:contains(Author:) + td > a").text()
+        val table = document.selectFirst(".table:not(.is-hoverable)")!!
+        artist = table.selectFirst("tr > td:first-child:contains(Artist:) + td > a")?.text()
+        author = table.selectFirst("tr > td:first-child:contains(Author:) + td > a")?.text()
 
         val altNames = table.select("tr > td:first-child:contains(Alt names:) + td > span")
             .map { it.text().trimEnd(',') }
 
-        description = document.selectFirst("h2 + .content")!!.text() +
+        description = (document.select("div.content")[1].selectFirst("p")?.text() ?: "") +
             (altNames.takeIf { it.isNotEmpty() }?.let { "\n\nAlt name(s): ${it.joinToString()}" } ?: "")
 
         // Includes "Genre", "Demographic", and "Content"
-        genre = table.select(".tag.is-info")
+        genre = table.select("tr > td:first-child:contains(Genre:) + td > span")
             .joinToString { it.text() }
     }
 
@@ -100,11 +100,11 @@ class MangaRok : ParsedHttpSource() {
         "table.is-hoverable > tbody > tr"
 
     override fun chapterFromElement(element: Element): SChapter = SChapter.create().apply {
-        val a = element.selectFirst("a")
+        val a = element.selectFirst("a")!!
         setUrlWithoutDomain(a.attr("abs:href"))
         name = a.text()
 
-        val dateString = element.selectFirst("td:nth-child(2)").text()
+        val dateString = element.selectFirst("td:nth-child(2)")!!.text()
         date_upload = dateFormat
             .parse(dateString)
             ?.time ?: 0L

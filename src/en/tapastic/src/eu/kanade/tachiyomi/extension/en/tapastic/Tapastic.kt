@@ -2,10 +2,11 @@ package eu.kanade.tachiyomi.extension.en.tapastic
 
 import android.app.Application
 import android.content.SharedPreferences
-import android.net.Uri
 import android.webkit.CookieManager
 import androidx.preference.PreferenceScreen
 import androidx.preference.SwitchPreferenceCompat
+import eu.kanade.tachiyomi.lib.textinterceptor.TextInterceptor
+import eu.kanade.tachiyomi.lib.textinterceptor.TextInterceptorHelper
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.ConfigurableSource
 import eu.kanade.tachiyomi.source.model.Filter
@@ -36,7 +37,6 @@ import uy.kohesive.injekt.api.get
 import uy.kohesive.injekt.injectLazy
 import java.text.SimpleDateFormat
 import java.util.Locale
-import kotlin.math.ceil
 
 class Tapastic : ConfigurableSource, ParsedHttpSource() {
 
@@ -79,7 +79,7 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
                                     .path("/")
                                     .name("birthDate")
                                     .value("1994-01-01")
-                                    .build()
+                                    .build(),
                             )
                             add(
                                 Cookie.Builder()
@@ -87,15 +87,16 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
                                     .path("/")
                                     .name("adjustedBirthDate")
                                     .value("1994-01-01")
-                                    .build()
+                                    .build(),
                             )
                         }
                     } else {
                         return mutableListOf()
                     }
                 }
-            }
+            },
         )
+        .addInterceptor(TextInterceptor())
         .build()
 
     private val preferences: SharedPreferences by lazy {
@@ -104,6 +105,7 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
 
     override fun headersBuilder(): Headers.Builder = Headers.Builder()
         .add("Referer", "https://m.tapas.io")
+        .set("User-Agent", USER_AGENT)
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
         val chapterVisibilityPref = SwitchPreferenceCompat(screen.context).apply {
@@ -168,18 +170,18 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
             val genreArray = arrayOf(
                 "Any",
                 "Action",
-                "Boys Love",
+                "BL",
                 "Comedy",
                 "Drama",
                 "Fantasy",
-                "Girls Love",
+                "GL",
                 "Gaming",
                 "Horror",
                 "LGBTQ+",
                 "Mystery",
                 "Romance",
-                "Science Fiction",
-                "Slice of Life"
+                "Science fiction",
+                "Slice of life",
             )
         }
     }
@@ -221,15 +223,17 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
                 url = "$baseUrl/mature".toHttpUrlOrNull()!!.newBuilder()
                 // Append only mature uri filters
                 filterList.forEach {
-                    if (it is UriFilter && it.isMature)
+                    if (it is UriFilter && it.isMature) {
                         it.addToUri(url)
+                    }
                 }
             } else {
                 url = "$baseUrl/comics".toHttpUrlOrNull()!!.newBuilder()
                 // Append only non-mature uri filters
                 filterList.forEach {
-                    if (it is UriFilter && !it.isMature)
+                    if (it is UriFilter && !it.isMature) {
                         it.addToUri(url)
+                    }
                 }
             }
         }
@@ -267,11 +271,17 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         artist = author
         status = document.select("div.schedule span.schedule-label").text().toStatus()
         val announcementName: String? = document.select("div.series-announcement div.announcement__text p").text()
-        val announcementText: String? = document.select("div.announcement__body p.js-announcement-text").text()
-        description = if (announcementName.isNullOrEmpty() || announcementText.isNullOrEmpty()) {
-            document.select("div.row-body span.description__body").text()
+
+        if (announcementName!!.contains("Hiatus")) {
+            status = SManga.ON_HIATUS
+            description = document.select("div.row-body span.description__body").text()
         } else {
-            announcementName.plus("\n") + announcementText.plus("\n\n") + document.select("div.row-body span.description__body").text()
+            val announcementText: String? = document.select("div.announcement__body p.js-announcement-text").text()
+            description = if (announcementName.isNullOrEmpty() || announcementText.isNullOrEmpty()) {
+                document.select("div.row-body span.description__body").text()
+            } else {
+                announcementName.plus("\n") + announcementText.plus("\n\n") + document.select("div.row-body span.description__body").text()
+            }
         }
     }
 
@@ -302,7 +312,7 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         fun parseChapters(page: Int) {
             val url = "$baseUrl/series/$mangaId/episodes?page=$page&sort=NEWEST&init_load=0&large=true&last_access=0&"
             val jsonResponse = client.newCall(GET(url, headers)).execute()
-            val json = json.parseToJsonElement(jsonResponse.body!!.string()).jsonObject["data"]!!.jsonObject
+            val json = json.parseToJsonElement(jsonResponse.body.string()).jsonObject["data"]!!.jsonObject
 
             Jsoup.parse(json["body"]!!.jsonPrimitive.content).select(chapterListSelector())
                 .let { list ->
@@ -339,32 +349,6 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
 
     // Pages
 
-    // TODO: Split off into library file or something, because Webtoons is using the exact same wordwrap and toImage functions
-    //  multisrc/src/main/java/eu/kanade/tachiyomi/multisrc/webtoons/Webtoons.kt
-    private fun wordwrap(t: String, lineWidth: Int) = buildString {
-        val text = t.replace("\n", "\n ")
-        var charCount = 0
-        text.split(" ").forEach { w ->
-            if (w.contains("\n")) {
-                charCount = 0
-            }
-            if (charCount > lineWidth) {
-                append("\n")
-                charCount = 0
-            }
-            append("$w ")
-            charCount += w.length + 1
-        }
-    }
-
-    private fun toImage(t: String, fontSize: Int, bold: Boolean = false): String {
-        val text = wordwrap(t.replace("&amp;", "&").replace("\\s*<br>\\s*".toRegex(), "\n"), 65)
-        val imgHeight = (text.lines().size + 2) * fontSize * 1.3
-        return "https://placehold.jp/" + fontSize + "/ffffff/000000/1500x" + ceil(imgHeight).toInt() + ".png?" +
-            "css=%7B%22text-align%22%3A%22%20left%22%2C%22padding-left%22%3A%22%203%25%22" + (if (bold) "%2C%22font-weight%22%3A%22%20600%22" else "") + "%7D&" +
-            "text=" + Uri.encode(text)
-    }
-
     override fun pageListParse(document: Document): List<Page> {
         var pages = document.select("img.content__img").mapIndexed { i, img ->
             Page(i, "", img.let { if (it.hasAttr("data-src")) it.attr("abs:data-src") else it.attr("abs:src") })
@@ -374,13 +358,13 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
             val episodeStory = document.select("p.js-episode-story").html()
 
             if (episodeStory.isNotEmpty()) {
-                val storyImage = toImage(episodeStory, 42)
-
                 val creator = document.select("a.name.js-fb-tracking")[0].text()
-                val creatorImage = toImage("Author's Notes from $creator", 43, true)
 
-                pages = pages + Page(pages.size, "", creatorImage)
-                pages = pages + Page(pages.size, "", storyImage)
+                pages = pages + Page(
+                    pages.size,
+                    "",
+                    TextInterceptorHelper.createUrl(creator, episodeStory),
+                )
             }
         }
         return pages
@@ -405,7 +389,7 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         Filter.Header("Mature filters"),
         MatureFilter("Show Mature Results Only"),
         MatureCategoryFilter(),
-        MatureGenreFilter()
+        MatureGenreFilter(),
     )
 
     private class CategoryFilter : UriSelectFilter(
@@ -418,9 +402,9 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
             Pair("TRENDING", "Trending"),
             Pair("FRESH", "Fresh"),
             Pair("BINGE", "Binge"),
-            Pair("ORIGINAL", "Tapas Originals")
+            Pair("ORIGINAL", "Tapas Originals"),
         ),
-        defaultValue = 1
+        defaultValue = 1,
     )
 
     private class GenreFilter : UriSelectFilter(
@@ -441,8 +425,8 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
             Pair("10", "Mystery"),
             Pair("5", "Romance"),
             Pair("4", "Science Fiction"),
-            Pair("1", "Slice of Life")
-        )
+            Pair("1", "Slice of Life"),
+        ),
     )
 
     private class StatusFilter : UriSelectFilter(
@@ -452,8 +436,8 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         arrayOf(
             Pair("NONE", "All"),
             Pair("F2R", "Free to read"),
-            Pair("PRM", "Premium")
-        )
+            Pair("PRM", "Premium"),
+        ),
     )
 
     private class MatureFilter(name: String) : Filter.CheckBox(name)
@@ -467,7 +451,7 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
             Pair("POPULAR", "Popular"),
             Pair("FRESH", "Fresh"),
         ),
-        defaultValue = 1
+        defaultValue = 1,
     )
 
     private class MatureGenreFilter : UriSelectFilter(
@@ -482,7 +466,7 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
             Pair("24", "Girls Love"),
             Pair("2", "Comedy"),
             Pair("6", "Horror"),
-        )
+        ),
     )
 
     private class SortFilter(
@@ -490,9 +474,9 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         var vals: Array<Pair<String, String>> = arrayOf(
             Pair("DATE", "Date"),
             Pair("LIKE", "Likes"),
-            Pair("SUBSCRIBE", "Subscribers")
+            Pair("SUBSCRIBE", "Subscribers"),
         ),
-        defaultValue: Int = 0
+        defaultValue: Int = 0,
     ) : Filter.Select<String>(name, vals.map { it.second }.toTypedArray(), defaultValue) {
         fun addToUri(uri: HttpUrl.Builder) {
             uri.addQueryParameter("s", vals[state].first)
@@ -511,13 +495,14 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         val uriParam: String,
         val vals: Array<Pair<String, String>>,
         val firstIsUnspecified: Boolean = false,
-        defaultValue: Int = 0
+        defaultValue: Int = 0,
     ) :
         Filter.Select<String>(displayName, vals.map { it.second }.toTypedArray(), defaultValue),
         UriFilter {
         override fun addToUri(uri: HttpUrl.Builder) {
-            if (state != 0 || !firstIsUnspecified)
+            if (state != 0 || !firstIsUnspecified) {
                 uri.addQueryParameter(uriParam, vals[state].first)
+            }
         }
     }
 
@@ -533,5 +518,6 @@ class Tapastic : ConfigurableSource, ParsedHttpSource() {
         private const val CHAPTER_VIS_PREF_KEY = "lockedChapterVisibility"
         private const val SHOW_LOCK_PREF_KEY = "showChapterLock"
         private const val SHOW_AUTHORS_NOTES_KEY = "showAuthorsNotes"
+        private const val USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:105.0) Gecko/20100101 Firefox/105.0"
     }
 }

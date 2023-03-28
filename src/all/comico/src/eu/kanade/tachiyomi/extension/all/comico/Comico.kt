@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.extension.all.comico
 
 import android.webkit.CookieManager
-import com.squareup.duktape.Duktape
+import eu.kanade.tachiyomi.lib.cryptoaes.CryptoAES
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.source.model.FilterList
@@ -32,7 +32,7 @@ import java.util.Locale
 open class Comico(
     final override val baseUrl: String,
     final override val name: String,
-    private val langCode: String
+    private val langCode: String,
 ) : HttpSource() {
     final override val supportsLatest = true
 
@@ -43,10 +43,6 @@ open class Comico(
     private val json by injectLazy<Json>()
 
     private val cookieManager by lazy { CookieManager.getInstance() }
-
-    private val cryptoJs by lazy {
-        client.newCall(GET(CRYPTOJS)).execute().body!!.string()
-    }
 
     private val imgHeaders by lazy {
         headersBuilder().set("Accept", ACCEPT_IMAGE).build()
@@ -66,16 +62,18 @@ open class Comico(
         }.build()
 
     override val client = network.client.newBuilder()
-        .cookieJar(object : CookieJar {
-            override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) =
-                cookies.filter { it.matches(url) }.forEach {
-                    cookieManager.setCookie(url.toString(), it.toString())
-                }
+        .cookieJar(
+            object : CookieJar {
+                override fun saveFromResponse(url: HttpUrl, cookies: List<Cookie>) =
+                    cookies.filter { it.matches(url) }.forEach {
+                        cookieManager.setCookie(url.toString(), it.toString())
+                    }
 
-            override fun loadForRequest(url: HttpUrl) =
-                cookieManager.getCookie(url.toString())?.split("; ")
-                    ?.mapNotNull { Cookie.parse(url, it) } ?: emptyList()
-        }).build()
+                override fun loadForRequest(url: HttpUrl) =
+                    cookieManager.getCookie(url.toString())?.split("; ")
+                        ?.mapNotNull { Cookie.parse(url, it) } ?: emptyList()
+            },
+        ).build()
 
     override fun headersBuilder() = Headers.Builder()
         .set("Accept-Language", langCode)
@@ -89,8 +87,11 @@ open class Comico(
         paginate("all_comic/ranking/trending", page)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList) =
-        if (query.isEmpty()) paginate("all_comic/read_for_free", page)
-        else POST("$apiUrl/search", apiHeaders, search(query, page))
+        if (query.isEmpty()) {
+            paginate("all_comic/read_for_free", page)
+        } else {
+            POST("$apiUrl/search", apiHeaders, search(query, page))
+        }
 
     override fun chapterListRequest(manga: SManga) =
         GET(apiUrl + manga.url + "/episode", apiHeaders)
@@ -155,8 +156,11 @@ open class Comico(
         rx.Observable.just(manga.apply { initialized = true })!!
 
     override fun fetchPageList(chapter: SChapter) =
-        if (!chapter.name.endsWith(LOCK)) super.fetchPageList(chapter)
-        else throw Error("You are not authorized to view this!")
+        if (!chapter.name.endsWith(LOCK)) {
+            super.fetchPageList(chapter)
+        } else {
+            throw Error("You are not authorized to view this!")
+        }
 
     private fun search(query: String, page: Int) =
         FormBody.Builder().add("query", query)
@@ -166,17 +170,11 @@ open class Comico(
     private fun paginate(route: String, page: Int) =
         GET("$apiUrl/$route?pageNo=${page - 1}&pageSize=25", apiHeaders)
 
-    private fun String.decrypt() = Duktape.create().use {
-        // javax.crypto.Cipher does not support empty IV
-        val script = """
-        const key = CryptoJS.enc.Utf8.parse('$AES_KEY'), iv = {words: []}
-        CryptoJS.AES.decrypt('$this', key, {iv}).toString(CryptoJS.enc.Utf8)
-        """
-        it.evaluate(cryptoJs + script).toString()
-    }
+    private fun String.decrypt() =
+        CryptoAES.decrypt(this, keyBytes, ivBytes)
 
     private val Response.data: JsonElement?
-        get() = json.parseToJsonElement(body!!.string()).jsonObject.also {
+        get() = json.parseToJsonElement(body.string()).jsonObject.also {
             val code = it["result"]["code"].jsonPrimitive.int
             if (code != 200) throw Error(status(code))
         }["data"]
@@ -186,7 +184,7 @@ open class Comico(
 
     private inline fun <reified T, R> JsonElement?.map(
         key: String,
-        transform: (T) -> R
+        transform: (T) -> R,
     ) = json.decodeFromJsonElement<List<T>>(this[key]).map(transform)
 
     override fun mangaDetailsParse(response: Response) =
@@ -206,8 +204,9 @@ open class Comico(
 
         private const val AES_KEY = "a7fc9dc89f2c873d79397f8a0028a4cd"
 
-        private const val CRYPTOJS =
-            "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js"
+        private val keyBytes = AES_KEY.toByteArray(Charsets.UTF_8)
+
+        private val ivBytes = ByteArray(16) // Zero filled array as IV
 
         private const val ACCEPT_IMAGE =
             "image/avif,image/jxl,image/webp,image/*,*/*"

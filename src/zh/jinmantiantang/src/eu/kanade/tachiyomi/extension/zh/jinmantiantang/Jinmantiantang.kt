@@ -2,8 +2,6 @@ package eu.kanade.tachiyomi.extension.zh.jinmantiantang
 
 import android.app.Application
 import android.content.SharedPreferences
-import androidx.preference.EditTextPreference
-import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
@@ -17,6 +15,7 @@ import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.ParsedHttpSource
 import eu.kanade.tachiyomi.util.asJsoup
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -39,15 +38,14 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
     private val preferences: SharedPreferences =
         Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
 
-    override val baseUrl: String = "https://" + preferences.getString(USE_MIRROR_URL_PREF, "0")!!
-        .toInt().coerceAtMost(SITE_ENTRIES_ARRAY.size - 1).let { SITE_ENTRIES_ARRAY[it] }
+    override val baseUrl: String = "https://" + preferences.baseUrl
 
     // 处理URL请求
     override val client: OkHttpClient = network.cloudflareClient
         .newBuilder()
         // Add rate limit to fix manga thumbnail load failure
         .rateLimitHost(
-            baseUrl.toHttpUrlOrNull()!!,
+            baseUrl.toHttpUrl(),
             preferences.getString(MAINSITE_RATELIMIT_PREF, MAINSITE_RATELIMIT_PREF_DEFAULT)!!.toInt(),
             preferences.getString(MAINSITE_RATELIMIT_PERIOD, MAINSITE_RATELIMIT_PERIOD_DEFAULT)!!.toLong(),
         )
@@ -60,11 +58,11 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
 
     override fun popularMangaNextPageSelector(): String = "a.prevnext"
     override fun popularMangaSelector(): String {
-        return "div.list-col:not([style])"
+        return "div.list-col > div.p-b-15:not([data-group])"
     }
 
     private fun List<SManga>.filterGenre(): List<SManga> {
-        val removedGenres = preferences.getString("BLOCK_GENRES_LIST", "")!!.substringBefore("//").trim()
+        val removedGenres = preferences.getString(BLOCK_PREF, "")!!.substringBefore("//").trim()
         if (removedGenres.isEmpty()) return this
         val removedList = removedGenres.lowercase().split(' ')
         return this.filterNot { manga ->
@@ -73,11 +71,11 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
     }
 
     override fun popularMangaFromElement(element: Element): SManga = SManga.create().apply {
-        val children = element.child(0).children()
+        val children = element.children()
         if (children[0].tagName() == "a") children.removeFirst()
         title = children[1].text()
-        setUrlWithoutDomain(children[0].selectFirst("a").attr("href"))
-        val img = children[0].selectFirst("img")
+        setUrlWithoutDomain(children[0].selectFirst("a")!!.attr("href"))
+        val img = children[0].selectFirst("img")!!
         thumbnail_url = img.attr("data-original").ifEmpty { img.attr("src") }.substringBeforeLast('?')
         author = children[2].select("a").joinToString(", ") { it.text() }
         genre = children[3].select("a").joinToString(", ") { it.text() }
@@ -162,26 +160,22 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
     // 漫画详情
 
     override fun mangaDetailsParse(document: Document): SManga = SManga.create().apply {
-        title = document.selectFirst("h1").text()
+        title = document.selectFirst("h1")!!.text()
         // keep thumbnail_url same as the one in popularMangaFromElement()
-        thumbnail_url = document.selectFirst(".thumb-overlay > img").attr("src").substringBeforeLast('.') + "_3x4.jpg"
+        thumbnail_url = document.selectFirst(".thumb-overlay > img")!!.attr("src").substringBeforeLast('.') + "_3x4.jpg"
         author = selectAuthor(document)
         genre = selectDetailsStatusAndGenre(document, 0).trim().split(" ").joinToString(", ")
 
         // When the index passed by the "selectDetailsStatusAndGenre(document: Document, index: Int)" index is 1,
         // it will definitely return a String type of 0, 1 or 2. This warning can be ignored
         status = selectDetailsStatusAndGenre(document, 1).trim().toInt()
-        description = document.selectFirst("#intro-block .p-t-5.p-b-5").text().substringAfter("敘述：").trim()
+        description = document.selectFirst("#intro-block .p-t-5.p-b-5")!!.text().substringAfter("敘述：").trim()
     }
 
     // 查询作者信息
     private fun selectAuthor(document: Document): String {
         val element = document.select("div.panel-body div.tag-block")[3]
-        return if (element.select("a").size == 0) {
-            "未知"
-        } else {
-            element.select("a").text().trim().replace(" ", ", ")
-        }
+        return element.select(".btn-primary").joinToString { it.text() }
     }
 
     // 查询漫画状态和类别信息
@@ -195,7 +189,7 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
                 genre
             }
         }
-        val elements: Elements = document.select("span[itemprop=genre]").first().select("a")
+        val elements: Elements = document.select("span[itemprop=genre]").first()!!.select("a")
         for (value in elements) {
             when (val vote: String = value.select("a").text()) {
                 "連載中" -> {
@@ -223,7 +217,7 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
 
     override fun chapterFromElement(element: Element): SChapter = SChapter.create().apply {
         url = element.select("a").attr("href")
-        name = element.select("a li").first().ownText()
+        name = element.select("a li").first()!!.ownText()
         date_upload = sdf.parse(element.select("a li span.hidden-xs").text().trim())?.time ?: 0
     }
 
@@ -233,7 +227,7 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
             val singleChapter = SChapter.create().apply {
                 name = "单章节"
                 url = document.select("a[class=col btn btn-primary dropdown-toggle reading]").attr("href")
-                date_upload = sdf.parse(document.select("[itemprop=datePublished]").last().attr("content"))?.time
+                date_upload = sdf.parse(document.select("[itemprop=datePublished]").last()!!.attr("content"))?.time
                     ?: 0
             }
             return listOf(singleChapter)
@@ -271,7 +265,7 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
     override fun getFilterList() = FilterList(
         CategoryGroup(),
         SortFilter(),
-        TimeFilter()
+        TimeFilter(),
     )
 
     private class CategoryGroup : UriPartFilter(
@@ -349,8 +343,8 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
             Pair("非H", "/search/photos?search_query=非H&"),
             Pair("血腥", "/search/photos?search_query=血腥&"),
             Pair("暴力", "/search/photos?search_query=暴力&"),
-            Pair("血腥暴力", "/search/photos?search_query=血腥暴力&")
-        )
+            Pair("血腥暴力", "/search/photos?search_query=血腥暴力&"),
+        ),
     )
 
     private class SortFilter : UriPartFilter(
@@ -359,8 +353,8 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
             Pair("最新", "o=mr&"),
             Pair("最多浏览", "o=mv&"),
             Pair("最多爱心", "o=tf&"),
-            Pair("最多图片", "o=mp&")
-        )
+            Pair("最多图片", "o=mp&"),
+        ),
     )
 
     private class TimeFilter : UriPartFilter(
@@ -369,8 +363,8 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
             Pair("全部", "t=a"),
             Pair("今天", "t=t"),
             Pair("这周", "t=w"),
-            Pair("本月", "t=m")
-        )
+            Pair("本月", "t=m"),
+        ),
     )
 
     /**
@@ -382,93 +376,16 @@ class Jinmantiantang : ParsedHttpSource(), ConfigurableSource {
     private open class UriPartFilter(
         displayName: String,
         val vals: Array<Pair<String, String>>,
-        defaultValue: Int = 0
+        defaultValue: Int = 0,
     ) :
         Filter.Select<String>(displayName, vals.map { it.first }.toTypedArray(), defaultValue) {
         open fun toUriPart() = vals[state].second
     }
 
     override fun setupPreferenceScreen(screen: PreferenceScreen) {
-        val mainSiteRateLimitPreference = ListPreference(screen.context).apply {
-            key = MAINSITE_RATELIMIT_PREF
-            title = MAINSITE_RATELIMIT_PREF_TITLE
-            entries = PREF_ENTRIES_ARRAY
-            entryValues = PREF_ENTRIES_ARRAY
-            summary = MAINSITE_RATELIMIT_PREF_SUMMARY
-
-            setDefaultValue(MAINSITE_RATELIMIT_PREF_DEFAULT)
-        }
-
-        val mainSiteRateLimitPeriodPreference = ListPreference(screen.context).apply {
-            key = MAINSITE_RATELIMIT_PERIOD
-            title = MAINSITE_RATELIMIT_PERIOD_TITLE
-            entries = PERIOD_ENTRIES_ARRAY
-            entryValues = PERIOD_ENTRIES_ARRAY
-            summary = MAINSITE_RATELIMIT_PERIOD_SUMMARY
-
-            setDefaultValue(MAINSITE_RATELIMIT_PERIOD_DEFAULT)
-        }
-
-        val mirrorURLPreference = ListPreference(screen.context).apply {
-            key = USE_MIRROR_URL_PREF
-            title = USE_MIRROR_URL_PREF_TITLE
-            entries = SITE_ENTRIES_ARRAY_DESCRIPTION
-            entryValues = SITE_ENTRIES_ARRAY_VALUE
-            summary = USE_MIRROR_URL_PREF_SUMMARY
-
-            setDefaultValue("0")
-        }
-
-        val blockGenrePreference = EditTextPreference(screen.context).apply {
-            key = BLOCK_PREF
-            title = BLOCK_PREF_TITLE
-            setDefaultValue(BLOCK_PREF_DEFAULT)
-            dialogTitle = BLOCK_PREF_DIALOGTITLE
-        }
-
-        screen.addPreference(mainSiteRateLimitPreference)
-        screen.addPreference(mainSiteRateLimitPeriodPreference)
-        screen.addPreference(mirrorURLPreference)
-        screen.addPreference(blockGenrePreference)
+        getPreferenceList(screen.context).forEach { screen.addPreference(it) }
     }
-
     companion object {
-        private const val DEFAULT_SITE = "18comic.vip"
         const val PREFIX_ID_SEARCH = "JM:"
-
-        private const val BLOCK_PREF = "BLOCK_GENRES_LIST"
-        private const val BLOCK_PREF_TITLE = "屏蔽词列表"
-        private const val BLOCK_PREF_DEFAULT = "// 例如 \"YAOI cos 扶他 毛絨絨 獵奇 韩漫 韓漫\", " +
-            "关键词之间用空格分离, 大小写不敏感, \"//\"后的字符会被忽略"
-        private const val BLOCK_PREF_DIALOGTITLE = "关键词列表"
-
-        private const val MAINSITE_RATELIMIT_PREF = "mainSiteRateLimitPreference"
-        private const val MAINSITE_RATELIMIT_PREF_TITLE = "在限制时间内（下个设置项）允许的请求数量。" //  Number of requests allowed within a period of units.
-        private const val MAINSITE_RATELIMIT_PREF_SUMMARY = "此值影响更新书架时发起连接请求的数量。调低此值可能减小IP被屏蔽的几率，但加载速度也会变慢。需要重启软件以生效。\n当前值：%s"
-        private val PREF_ENTRIES_ARRAY = (1..10).map { i -> i.toString() }.toTypedArray()
-        private const val MAINSITE_RATELIMIT_PREF_DEFAULT = 1.toString()
-
-        private const val MAINSITE_RATELIMIT_PERIOD = "mainSiteRateLimitPeriodPreference"
-        private const val MAINSITE_RATELIMIT_PERIOD_TITLE = "限制持续时间。单位秒" // The limiting duration. Defaults to 3.
-        private const val MAINSITE_RATELIMIT_PERIOD_SUMMARY = "此值影响更新书架时请求的间隔时间。调大此值可能减小IP被屏蔽的几率，但更新时间也会变慢。需要重启软件以生效。\n当前值：%s"
-        private val PERIOD_ENTRIES_ARRAY = (1..60).map { i -> i.toString() }.toTypedArray()
-        private const val MAINSITE_RATELIMIT_PERIOD_DEFAULT = 3.toString()
-
-        private const val USE_MIRROR_URL_PREF = "useMirrorWebsitePreference"
-        private const val USE_MIRROR_URL_PREF_TITLE = "使用镜像网址"
-        private const val USE_MIRROR_URL_PREF_SUMMARY = "使用镜像网址。需要重启软件以生效。" // "Use mirror url. Defaults to main site"
-
-        private val SITE_ENTRIES_ARRAY_DESCRIPTION = arrayOf(
-            "主站", "海外分流",
-            "中国大陆总站", "中国大陆分流"
-        )
-        private val SITE_ENTRIES_ARRAY_VALUE = arrayOf("0", "1", "2", "3")
-
-        // List is based on https://jmcomic.bet/
-        // Please also update AndroidManifest
-        private val SITE_ENTRIES_ARRAY = arrayOf(
-            DEFAULT_SITE, "18comic.org",
-            "jmcomic.asia", "jmcomic.city"
-        )
     }
 }

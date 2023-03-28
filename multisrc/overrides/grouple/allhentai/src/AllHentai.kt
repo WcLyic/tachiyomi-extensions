@@ -1,18 +1,31 @@
 package eu.kanade.tachiyomi.extension.ru.allhentai
 
+import android.app.Application
+import android.content.SharedPreferences
+import android.widget.Toast
+import androidx.preference.EditTextPreference
 import eu.kanade.tachiyomi.multisrc.grouple.GroupLe
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.FilterList
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
+import uy.kohesive.injekt.Injekt
+import uy.kohesive.injekt.api.get
 
-class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
+class AllHentai : GroupLe("AllHentai", "http://allhen.online", "ru") {
 
     override val id: Long = 1809051393403180443
 
+    private val preferences: SharedPreferences by lazy {
+        Injekt.get<Application>().getSharedPreferences("source_$id", 0x0000)
+    }
+
+    private var domain: String = preferences.getString(DOMAIN_TITLE, DOMAIN_DEFAULT)!!
+    override val baseUrl: String = domain
+
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val url = "$baseUrl/search/advanced?offset=${70 * (page - 1)}".toHttpUrlOrNull()!!.newBuilder()
+        val url = super.searchMangaRequest(page, query, filters).url.newBuilder()
         (if (filters.isEmpty()) getFilterList() else filters).forEach { filter ->
             when (filter) {
                 is GenreList -> filter.state.forEach { genre ->
@@ -44,20 +57,19 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
                         return GET(tagUrl.toString(), headers)
                     }
                 }
-                else -> return@forEach
+                else -> {}
             }
         }
-        if (query.isNotEmpty()) {
-            url.addQueryParameter("q", query)
-        }
-        return if (url.toString().contains("&"))
+        return if (url.toString().contains("&")) {
             GET(url.toString().replace("=%3D", "="), headers)
-        else popularMangaRequest(page)
+        } else {
+            popularMangaRequest(page)
+        }
     }
 
     private class OrderBy : Filter.Select<String>(
         "Сортировка (только)",
-        arrayOf("Без сортировки", "По году", "По популярности", "Популярно сейчас", "По рейтингу", "Новинки", "По дате обновления")
+        arrayOf("Без сортировки", "По году", "По популярности", "Популярно сейчас", "По рейтингу", "Новинки", "По дате обновления"),
     )
 
     private class Genre(name: String, val id: String) : Filter.TriState(name)
@@ -74,7 +86,7 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
         Tags(tagsName),
         GenreList(getGenreList()),
         Category(getCategoryList()),
-        FilList(getFilList())
+        FilList(getFilList()),
     )
 
     private fun getGenreList() = listOf(
@@ -111,7 +123,7 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
         Genre("чикан", "el_1059"),
         Genre("этти", "el_798"),
         Genre("юри", "el_84"),
-        Genre("яой", "el_83")
+        Genre("яой", "el_83"),
     )
 
     private fun getCategoryList() = listOf(
@@ -119,7 +131,7 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
         Genre("Анимация", "el_5777"),
         Genre("Без текста", "el_3157"),
         Genre("Порно комикс", "el_1003"),
-        Genre("Порно манхва", "el_1104")
+        Genre("Порно манхва", "el_1104"),
     )
 
     private fun getFilList() = listOf(
@@ -130,7 +142,7 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
         Genre("Переведено", "s_translated"),
         Genre("Длинная", "s_many_chapters"),
         Genre("Ожидает загрузки", "s_wait_upload"),
-        Genre("Продается", "s_sale")
+        Genre("Продается", "s_sale"),
     )
 
     private fun getTagsList() = listOf(
@@ -250,10 +262,36 @@ class AllHentai : GroupLe("AllHentai", "http://23.allhen.online", "ru") {
         Tag("шантаж", "blackmail"),
         Tag("эксгибиционизм", "exhibitionism"),
         Tag("эльфы", "elves"),
-        Tag("яндере", "yandere")
+        Tag("яндере", "yandere"),
     )
 
     private val tagsName = getTagsList().map {
         it.name
     }.toTypedArray()
+
+    override fun setupPreferenceScreen(screen: androidx.preference.PreferenceScreen) {
+        super.setupPreferenceScreen(screen)
+        EditTextPreference(screen.context).apply {
+            key = DOMAIN_TITLE
+            this.title = DOMAIN_TITLE
+            summary = domain
+            this.setDefaultValue(DOMAIN_DEFAULT)
+            dialogTitle = DOMAIN_TITLE
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    val res = preferences.edit().putString(DOMAIN_TITLE, newValue as String).commit()
+                    Toast.makeText(screen.context, "Для смены домена необходимо перезапустить приложение с полной остановкой.", Toast.LENGTH_LONG).show()
+                    res
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }.let(screen::addPreference)
+    }
+
+    companion object {
+        private const val DOMAIN_TITLE = "Домен"
+        private const val DOMAIN_DEFAULT = "http://allhen.online"
+    }
 }

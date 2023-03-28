@@ -23,8 +23,9 @@ class GmangaPreferences(id: Long) {
                 summary = "%s"
             }
 
-            if (!preferences.contains(it.key))
+            if (!preferences.contains(it.key)) {
                 preferences.edit().putString(it.key, it.default().key).apply()
+            }
 
             screen.addPreference(preference)
         }
@@ -42,7 +43,7 @@ class GmangaPreferences(id: Long) {
             val key: String,
             val title: String,
             private val options: List<StringPreferenceOption>,
-            private val defaultOptionIndex: Int = 0
+            private val defaultOptionIndex: Int = 0,
         ) {
             fun entries(): Array<String> = options.map { it.title }.toTypedArray()
             fun entryValues(): Array<String> = options.map { it.key }.toTypedArray()
@@ -52,18 +53,29 @@ class GmangaPreferences(id: Long) {
         // preferences
         const val PREF_CHAPTER_LISTING_SHOW_ALL = "gmanga_gmanga_chapter_listing_show_all"
         const val PREF_CHAPTER_LISTING_SHOW_POPULAR = "gmanga_chapter_listing_most_viewed"
+        const val PREF_LASTETS_LISTING_SHOW_LASTETS_CHAPTER = "gmanga_Last_listing_last_chapter_added"
+        const val PREF_LASTETS_LISTING_SHOW_LASTETS_MANGA = "gmanga_chapter_listing_last_manga_added"
 
         val PREF_CHAPTER_LISTING = StringPreference(
             "gmanga_chapter_listing",
             "كيفية عرض الفصل بقائمة الفصول",
             listOf(
                 StringPreferenceOption(PREF_CHAPTER_LISTING_SHOW_POPULAR, "اختيار النسخة الأكثر مشاهدة"),
-                StringPreferenceOption(PREF_CHAPTER_LISTING_SHOW_ALL, "عرض جميع النسخ")
-            )
+                StringPreferenceOption(PREF_CHAPTER_LISTING_SHOW_ALL, "عرض جميع النسخ"),
+            ),
+        )
+        val PREF_LASTETS_LISTING = StringPreference(
+            "gmanga_last_listing",
+            "كيفية عرض بقائمة الأعمال الجديدة ",
+            listOf(
+                StringPreferenceOption(PREF_LASTETS_LISTING_SHOW_LASTETS_CHAPTER, "اختيار آخر الإضافات"),
+                StringPreferenceOption(PREF_LASTETS_LISTING_SHOW_LASTETS_MANGA, "اختيار لمانجات الجديدة"),
+            ),
         )
 
         private val STRING_PREFERENCES = listOf(
-            PREF_CHAPTER_LISTING
+            PREF_CHAPTER_LISTING,
+            PREF_LASTETS_LISTING,
         )
     }
 }

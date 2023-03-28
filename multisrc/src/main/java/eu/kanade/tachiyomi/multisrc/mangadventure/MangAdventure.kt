@@ -1,10 +1,8 @@
 package eu.kanade.tachiyomi.multisrc.mangadventure
 
-import android.net.Uri
 import android.os.Build.VERSION
 import eu.kanade.tachiyomi.AppInfo
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
 import eu.kanade.tachiyomi.source.model.SChapter
@@ -12,6 +10,7 @@ import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.decodeFromJsonElement
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.Response
 import uy.kohesive.injekt.injectLazy
 import eu.kanade.tachiyomi.source.model.Page as SPage
@@ -20,7 +19,7 @@ import eu.kanade.tachiyomi.source.model.Page as SPage
 abstract class MangAdventure(
     override val name: String,
     override val baseUrl: String,
-    override val lang: String = "en"
+    override val lang: String = "en",
 ) : HttpSource() {
     /** The site's manga categories. */
     protected open val categories = DEFAULT_CATEGORIES
@@ -30,7 +29,10 @@ abstract class MangAdventure(
 
     /** The site's sort order labels that correspond to [SortOrder.values]. */
     protected open val orders = arrayOf(
-        "Title", "Views", "Latest upload", "Chapter count"
+        "Title",
+        "Views",
+        "Latest upload",
+        "Chapter count",
     )
 
     /** A user agent representing Tachiyomi. */
@@ -38,15 +40,13 @@ abstract class MangAdventure(
         "(Android ${VERSION.RELEASE}; Mobile) " +
         "Tachiyomi/${AppInfo.getVersionName()}"
 
-    /** The URI of the site's API. */
-    private val apiUri by lazy {
-        Uri.parse("$baseUrl/api/v$versionId")!!
-    }
+    /** The URL of the site's API. */
+    private val apiUrl by lazy { "$baseUrl/api/v2" }
 
     /** The JSON parser of the class. */
     private val json by injectLazy<Json>()
 
-    override val versionId = 2
+    override val versionId = 3
 
     override val supportsLatest = true
 
@@ -54,49 +54,33 @@ abstract class MangAdventure(
         super.headersBuilder().set("User-Agent", userAgent)
 
     override fun latestUpdatesRequest(page: Int) =
-        apiUri.buildUpon().appendEncodedPath("series").run {
-            appendQueryParameter("page", page.toString())
-            appendQueryParameter("sort", "-latest_upload")
-            GET(toString(), headers)
-        }
+        GET("$apiUrl/series?page=$page&sort=-latest_upload", headers)
 
     override fun popularMangaRequest(page: Int) =
-        apiUri.buildUpon().appendEncodedPath("series").run {
-            appendQueryParameter("page", page.toString())
-            appendQueryParameter("sort", "-views")
-            GET(toString(), headers)
-        }
+        GET("$apiUrl/series?page=$page&sort=-views", headers)
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList) =
-        apiUri.buildUpon().appendEncodedPath("series").run {
+        apiUrl.toHttpUrl().newBuilder().addEncodedPathSegment("series").run {
             if (query.startsWith(SLUG_QUERY)) {
-                appendQueryParameter("slug", query.substring(SLUG_QUERY.length))
+                addQueryParameter("slug", query.substring(SLUG_QUERY.length))
             } else {
-                appendQueryParameter("page", page.toString())
-                appendQueryParameter("title", query)
+                addQueryParameter("page", page.toString())
+                addQueryParameter("title", query)
                 filters.filterIsInstance<UriFilter>().forEach {
-                    appendQueryParameter(it.param, it.toString())
+                    addQueryParameter(it.param, it.toString())
                 }
             }
-            GET(toString(), headers)
+            GET(build(), headers)
         }
+
+    override fun mangaDetailsRequest(manga: SManga) =
+        GET("$apiUrl/series/${manga.url}", headers)
 
     override fun chapterListRequest(manga: SManga) =
-        apiUri.buildUpon().appendEncodedPath("chapters").run {
-            appendQueryParameter("series", manga.slug)
-            appendQueryParameter("date_format", "timestamp")
-            GET(toString(), headers)
-        }
+        GET("$apiUrl/series/${manga.url}/chapters?date_format=timestamp", headers)
 
     override fun pageListRequest(chapter: SChapter) =
-        apiUri.buildUpon().appendEncodedPath("pages").run {
-            val (slug, vol, num) = chapter.components
-            appendQueryParameter("track", "true")
-            appendQueryParameter("series", slug)
-            appendQueryParameter("volume", vol)
-            appendQueryParameter("number", num)
-            GET(toString(), headers)
-        }
+        GET("$apiUrl/chapters/${chapter.url}/pages?track=true", headers)
 
     override fun latestUpdatesParse(response: Response) =
         response.decode<Paginator<Series>>().let {
@@ -112,7 +96,7 @@ abstract class MangAdventure(
     override fun chapterListParse(response: Response) =
         response.decode<Results<Chapter>>().map { chapter ->
             SChapter.create().apply {
-                url = chapter.url
+                url = chapter.id.toString()
                 name = buildString {
                     append(chapter.full_title)
                     if (chapter.final) append(" [END]")
@@ -131,19 +115,12 @@ abstract class MangAdventure(
             SPage(page.number, page.url, page.image)
         }
 
-    // Return the real URL for "Open in browser"
-    override fun mangaDetailsRequest(manga: SManga) =
-        GET(baseUrl + manga.url, headers)
-
-    // Workaround to allow "Open in browser" to use the real URL
-    override fun fetchMangaDetails(manga: SManga) =
-        client.newCall(GET("$apiUri/series/${manga.slug}", headers))
-            .asObservableSuccess().map {
-                mangaDetailsParse(it).apply { initialized = true }
-            }!!
-
     override fun imageUrlParse(response: Response) =
         throw UnsupportedOperationException("Not used!")
+
+    override fun getMangaUrl(manga: SManga) = "$baseUrl/reader/${manga.url}"
+
+    override fun getChapterUrl(chapter: SChapter) = "$apiUrl/chapters/${chapter.url}/read"
 
     override fun getFilterList() =
         FilterList(
@@ -151,32 +128,25 @@ abstract class MangAdventure(
             Artist(),
             SortOrder(orders),
             Status(statuses),
-            CategoryList(categories)
+            CategoryList(categories),
         )
-
-    /** The slug of the manga. */
-    private inline val SManga.slug
-        get() = url.split('/')[2]
-
-    /** The components (series, volume, number) of the chapter. */
-    private inline val SChapter.components
-        get() = url.split('/').slice(2..5)
 
     /** Decodes the JSON response as an object. */
     private inline fun <reified T> Response.decode() =
-        json.decodeFromJsonElement<T>(json.parseToJsonElement(body!!.string()))
+        json.decodeFromJsonElement<T>(json.parseToJsonElement(body.string()))
 
     /** Converts a [Series] object to an [SManga]. */
     private fun mangaFromJSON(series: Series) =
         SManga.create().apply {
-            url = series.url
+            url = series.slug
             title = series.title
             thumbnail_url = series.cover
             description = buildString {
                 series.description?.let(::append)
                 series.aliases.let {
-                    if (!it.isNullOrEmpty())
+                    if (!it.isNullOrEmpty()) {
                         it.joinTo(this, "\n", "\n\nAlternative titles:\n")
+                    }
                 }
             }
             author = series.authors?.joinToString()
@@ -184,10 +154,12 @@ abstract class MangAdventure(
             genre = series.categories?.joinToString()
             status = if (series.licensed == true) {
                 SManga.LICENSED
-            } else when (series.completed) {
-                true -> SManga.COMPLETED
-                false -> SManga.ONGOING
-                null -> SManga.UNKNOWN
+            } else {
+                when (series.completed) {
+                    true -> SManga.COMPLETED
+                    false -> SManga.ONGOING
+                    null -> SManga.UNKNOWN
+                }
             }
         }
 
@@ -226,7 +198,7 @@ abstract class MangAdventure(
             "Supernatural",
             "Tragedy",
             "Yaoi",
-            "Yuri"
+            "Yuri",
         )
 
         /** Query to search by manga slug. */

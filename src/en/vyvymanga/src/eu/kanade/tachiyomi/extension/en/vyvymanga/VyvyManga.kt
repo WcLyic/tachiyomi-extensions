@@ -18,7 +18,7 @@ import java.util.Locale
 class VyvyManga : ParsedHttpSource() {
     override val name = "VyvyManga"
 
-    override val baseUrl = "https://vyvymanga.com"
+    override val baseUrl = "https://vyvymanga.net"
 
     override val lang = "en"
 
@@ -28,7 +28,7 @@ class VyvyManga : ParsedHttpSource() {
 
     // Popular
     override fun popularMangaRequest(page: Int): Request =
-        GET("$baseUrl/search", headers)
+        GET("$baseUrl/search" + if (page != 1) "?page=$page" else "", headers)
 
     override fun popularMangaSelector(): String =
         searchMangaSelector()
@@ -36,7 +36,7 @@ class VyvyManga : ParsedHttpSource() {
     override fun popularMangaFromElement(element: Element): SManga =
         searchMangaFromElement(element)
 
-    override fun popularMangaNextPageSelector(): String? =
+    override fun popularMangaNextPageSelector(): String =
         searchMangaNextPageSelector()
 
     // Search
@@ -48,8 +48,7 @@ class VyvyManga : ParsedHttpSource() {
         return GET(url.toString(), headers)
     }
 
-    override fun searchMangaSelector(): String =
-        ".comic-item"
+    override fun searchMangaSelector(): String = ".comic-item"
 
     override fun searchMangaFromElement(element: Element): SManga = SManga.create().apply {
         setUrlWithoutDomain(element.selectFirst("a")!!.absUrl("href"))
@@ -57,12 +56,11 @@ class VyvyManga : ParsedHttpSource() {
         thumbnail_url = element.selectFirst(".comic-image")!!.absUrl("data-background-image")
     }
 
-    override fun searchMangaNextPageSelector(): String? =
-        "[rel=next]"
+    override fun searchMangaNextPageSelector(): String = "[rel=next]"
 
     // Latest
     override fun latestUpdatesRequest(page: Int): Request =
-        GET("$baseUrl/search?q=&completed=&sort=updated_at", headers)
+        GET("$baseUrl/search?sort=updated_at" + if (page != 1) "&page=$page" else "", headers)
 
     override fun latestUpdatesSelector(): String =
         searchMangaSelector()
@@ -85,7 +83,7 @@ class VyvyManga : ParsedHttpSource() {
             "Completed" -> SManga.COMPLETED
             else -> SManga.UNKNOWN
         }
-        thumbnail_url = document.selectFirst(".img-manga").absUrl("src")
+        thumbnail_url = document.selectFirst(".img-manga")!!.absUrl("src")
     }
 
     // Chapters
@@ -94,7 +92,7 @@ class VyvyManga : ParsedHttpSource() {
 
     override fun chapterFromElement(element: Element): SChapter = SChapter.create().apply {
         url = element.absUrl("href")
-        name = element.ownText()
+        name = element.selectFirst("span")!!.text()
         date_upload = parseChapterDate(element.selectFirst("> p")?.text())
     }
 

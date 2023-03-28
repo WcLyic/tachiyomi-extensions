@@ -12,10 +12,7 @@ class ReadManga : GroupLe("ReadManga", "https://readmanga.live", "ru") {
     override val id: Long = 5
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
-        val url = "$baseUrl/search/advanced?offset=${70 * (page - 1)}".toHttpUrlOrNull()!!.newBuilder()
-        if (query.isNotEmpty()) {
-            url.addQueryParameter("q", query)
-        }
+        val url = super.searchMangaRequest(page, query, filters).url.newBuilder()
         (if (filters.isEmpty()) getFilterList().reversed() else filters.reversed()).forEach { filter ->
             when (filter) {
                 is GenreList -> filter.state.forEach { genre ->
@@ -52,17 +49,19 @@ class ReadManga : GroupLe("ReadManga", "https://readmanga.live", "ru") {
                         return GET(ordUrl.toString(), headers)
                     }
                 }
-                else -> return@forEach
+                else -> {}
             }
         }
-        return if (url.toString().contains("&"))
+        return if (url.toString().contains("&")) {
             GET(url.toString().replace("=%3D", "="), headers)
-        else popularMangaRequest(page)
+        } else {
+            popularMangaRequest(page)
+        }
     }
 
     private class OrderBy : Filter.Select<String>(
         "Сортировка",
-        arrayOf("По популярности", "Популярно сейчас", "По году", "По имени", "Новинки", "По дате обновления", "По рейтингу")
+        arrayOf("По популярности", "Популярно сейчас", "По году", "По имени", "Новинки", "По дате обновления", "По рейтингу"),
     )
 
     private class Genre(name: String, val id: String) : Filter.TriState(name)
@@ -79,7 +78,7 @@ class ReadManga : GroupLe("ReadManga", "https://readmanga.live", "ru") {
         GenreList(getGenreList()),
         AgeList(getAgeList()),
         More(getMore()),
-        FilList(getFilList())
+        FilList(getFilList()),
     )
 
     private fun getFilList() = listOf(
@@ -92,19 +91,19 @@ class ReadManga : GroupLe("ReadManga", "https://readmanga.live", "ru") {
         Genre("Длинная", "s_many_chapters"),
         Genre("Ожидает загрузки", "s_wait_upload"),
         Genre("Продается", "s_sale"),
-        Genre("Белые жанры", "s_not_pessimized")
+        Genre("Белые жанры", "s_not_pessimized"),
     )
     private fun getMore() = listOf(
         Genre("Анонс", "el_9578"),
         Genre("В цвете", "el_7290"),
         Genre("Веб", "el_2160"),
-        Genre("Сборник", "el_2157")
+        Genre("Сборник", "el_2157"),
     )
 
     private fun getAgeList() = listOf(
         Genre("G(0+)", "el_6180"),
         Genre("PG-13(12+)", "el_6181"),
-        Genre("PG(16+)", "el_6179")
+        Genre("PG(16+)", "el_6179"),
     )
 
     private fun getCategoryList() = listOf(
@@ -113,9 +112,9 @@ class ReadManga : GroupLe("ReadManga", "https://readmanga.live", "ru") {
         Genre("Арт", "el_5685"),
         Genre("Ёнкома", "el_2161"),
         Genre("Комикс", "el_3515"),
+        Genre("Манга", "el_9451"),
         Genre("Манхва", "el_3001"),
         Genre("Маньхуа", "el_3002"),
-        Genre("Ранобэ", "el_8575"),
     )
 
     private fun getGenreList() = listOf(
@@ -156,6 +155,6 @@ class ReadManga : GroupLe("ReadManga", "https://readmanga.live", "ru") {
         Genre("уся", "el_9560"),
         Genre("фэнтези", "el_2131"),
         Genre("школа", "el_2127"),
-        Genre("этти", "el_2149")
+        Genre("этти", "el_2149"),
     )
 }

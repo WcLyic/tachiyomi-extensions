@@ -1,3 +1,5 @@
+package eu.kanade.tachiyomi.extension.ru.newbie.dto
+
 import kotlinx.serialization.Serializable
 
 // Catalog API
@@ -10,7 +12,7 @@ data class PageWrapperDto<T>(
 data class LibraryDto(
     val id: Long,
     val title: TitleDto,
-    val image: ImgDto
+    val image: ImgDto,
 )
 
 // Manga Details
@@ -34,40 +36,34 @@ data class MangaDetDto(
 @Serializable
 data class TitleDto(
     val en: String,
-    val ru: String
+    val ru: String,
 )
 
 @Serializable
 data class AuthorDto(
-    val name: String?
+    val name: String?,
 )
 
 @Serializable
 data class ImgDto(
-    val srcset: ImgsDto,
-)
-
-@Serializable
-data class ImgsDto(
-    val large: String,
-    val small: String,
+    val name: String,
 )
 
 @Serializable
 data class TagsDto(
-    val title: TitleDto
+    val title: TitleDto,
 )
 
 @Serializable
 data class BranchesDto(
     val id: Long,
-    val is_default: Boolean
+    val is_default: Boolean,
 )
 
 // Chapters
 @Serializable
 data class SeriesWrapperDto<T>(
-    val items: T
+    val items: T,
 )
 
 @Serializable
@@ -78,13 +74,13 @@ data class BookDto(
     val number: Float,
     val created_at: String,
     val translator: String?,
-    val is_available: Boolean
+    val is_available: Boolean,
 )
 
 @Serializable
 data class PageDto(
     val id: Int,
-    val slices: Int?
+    val slices: Int?,
 )
 
 // Search NEO in POST Request
@@ -107,6 +103,7 @@ data class SearchLibraryDto(
 data class DocElementsDto(
     val id: String,
     val title_en: String,
+    val title_ru: String,
     val image_large: String,
-    val image_small: String
+    val image_small: String,
 )

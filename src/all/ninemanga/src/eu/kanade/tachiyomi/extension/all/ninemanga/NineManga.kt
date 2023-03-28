@@ -20,7 +20,7 @@ import java.util.Locale
 open class NineManga(
     override val name: String,
     override val baseUrl: String,
-    override val lang: String
+    override val lang: String,
 ) : ParsedHttpSource() {
 
     override val supportsLatest: Boolean = true
@@ -51,14 +51,19 @@ open class NineManga(
 
     override fun popularMangaNextPageSelector() = latestUpdatesNextPageSelector()
 
+    // for cleaning manga title from chapter name
+    private var mangaTitleForCleaning = ""
+
     override fun mangaDetailsParse(document: Document) = SManga.create().apply {
         document.select("div.bookintro").let {
             title = it.select("li > span:not([class])").text().removeSuffix(" Manga")
             genre = it.select("li[itemprop=genre] a").joinToString { e -> e.text() }
             author = it.select("li a[itemprop=author]").text()
-            status = parseStatus(it.select("li a.red").first().text())
+            status = parseStatus(it.select("li a.red").first()!!.text())
             description = it.select("p[itemprop=description]").text()
             thumbnail_url = it.select("img[itemprop=image]").attr("abs:src")
+
+            mangaTitleForCleaning = "$title "
         }
     }
 
@@ -76,7 +81,7 @@ open class NineManga(
 
     override fun chapterFromElement(element: Element) = SChapter.create().apply {
         element.select("a.chapter_list_a").let {
-            name = it.text()
+            name = it.text().replace(mangaTitleForCleaning, "", true)
             url = it.attr("href").substringAfter(baseUrl).replace("%20", " ")
         }
         date_upload = parseChapterDate(element.select("span").text())
@@ -109,12 +114,12 @@ open class NineManga(
     }
 
     override fun pageListParse(document: Document): List<Page> = mutableListOf<Page>().apply {
-        document.select("select#page").first().select("option").forEach {
+        document.select("select#page").first()!!.select("option").forEach {
             add(Page(size, baseUrl + it.attr("value")))
         }
     }
 
-    override fun imageUrlParse(document: Document) = document.select("div.pic_box img.manga_pic").first().attr("src").orEmpty()
+    override fun imageUrlParse(document: Document) = document.select("div.pic_box img.manga_pic").first()!!.attr("src").orEmpty()
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         val url = "$baseUrl/search/".toHttpUrlOrNull()!!.newBuilder()
@@ -140,6 +145,7 @@ open class NineManga(
                     url.addQueryParameter("out_category_id", genreExclude)
                 }
                 is CompletedFilter -> url.addQueryParameter("completed_series", filter.toUriPart())
+                else -> {}
             }
         }
 
@@ -170,8 +176,8 @@ open class NineManga(
         arrayOf(
             Pair("Contain", "contain"),
             Pair("Begin", "begin"),
-            Pair("End", "end")
-        )
+            Pair("End", "end"),
+        ),
     )
 
     private class QueryCBEFilter : ContainBeginEndFilter("Query")
@@ -183,8 +189,8 @@ open class NineManga(
         arrayOf(
             Pair("Either", "either"),
             Pair("Yes", "yes"),
-            Pair("No", "no")
-        )
+            Pair("No", "no"),
+        ),
     )
 
     override fun getFilterList() = FilterList(
@@ -194,7 +200,7 @@ open class NineManga(
         ArtistCBEFilter(),
         ArtistFilter(),
         GenreList(getGenreList()),
-        CompletedFilter()
+        CompletedFilter(),
     )
 
     // $(document.querySelectorAll('.optionbox .typelist:nth-child(3) ul li.cate_list')).map((i, el)=>`Genre("${$(el).first().text().trim()}", "${$(el).attr("cate_id")}")`).get().sort().join(",\n")
@@ -264,6 +270,6 @@ open class NineManga(
         Genre("Webtoon", "58"),
         Genre("Webtoons", "50"),
         Genre("Wuxia", "128"),
-        Genre("[No Chapters]", "61")
+        Genre("[No Chapters]", "61"),
     )
 }

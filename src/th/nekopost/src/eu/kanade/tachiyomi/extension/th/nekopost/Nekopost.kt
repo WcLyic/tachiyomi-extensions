@@ -43,6 +43,8 @@ class Nekopost : ParsedHttpSource() {
 
     private val existingProject: HashSet<String> = HashSet()
 
+    private var firstPageNulled: Boolean = false
+
     override val lang: String = "th"
     override val name: String = "Nekopost"
 
@@ -78,11 +80,10 @@ class Nekopost : ParsedHttpSource() {
     override fun mangaDetailsParse(document: Document): SManga = throw NotImplementedError("Unused")
 
     override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return client.newCall(GET("$projectDataEndpoint/${manga.url}"))
+        return client.newCall(GET("$projectDataEndpoint/${manga.url}", headers))
             .asObservableSuccess()
             .map { response ->
-                val responseBody =
-                    response.body ?: throw Error("Unable to fetch manga detail of ${manga.title}")
+                val responseBody = response.body
                 val projectInfo: RawProjectInfo = json.decodeFromString(responseBody.string())
 
                 manga.apply {
@@ -93,6 +94,8 @@ class Nekopost : ParsedHttpSource() {
                         author = it.authorName
                         description = it.info
                         status = getStatus(it.status)
+                        thumbnail_url =
+                            "$fileHost/collectManga/${it.projectId}/${it.projectId}_cover.jpg"
                         initialized = true
                     }
 
@@ -107,12 +110,10 @@ class Nekopost : ParsedHttpSource() {
 
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> {
         return if (manga.status != SManga.LICENSED) {
-            client.newCall(GET("$projectDataEndpoint/${manga.url}"))
+            client.newCall(GET("$projectDataEndpoint/${manga.url}", headers))
                 .asObservableSuccess()
                 .map { response ->
-                    val responseBody =
-                        response.body
-                            ?: throw Error("Unable to fetch manga detail of ${manga.title}")
+                    val responseBody = response.body
                     val projectInfo: RawProjectInfo = json.decodeFromString(responseBody.string())
 
                     manga.status = getStatus(projectInfo.projectInfo.status)
@@ -128,7 +129,7 @@ class Nekopost : ParsedHttpSource() {
                             name = chapter.chapterName
                             date_upload = SimpleDateFormat(
                                 "yyyy-MM-dd HH:mm:ss",
-                                Locale("th")
+                                Locale("th"),
                             ).parse(chapter.createDate)?.time
                                 ?: 0L
                             chapter_number = chapter.chapterNo.toFloat()
@@ -142,12 +143,10 @@ class Nekopost : ParsedHttpSource() {
     }
 
     override fun fetchPageList(chapter: SChapter): Observable<List<Page>> {
-        return client.newCall(GET("$fileHost/collectManga/${chapter.url}"))
+        return client.newCall(GET("$fileHost/collectManga/${chapter.url}", headers))
             .asObservableSuccess()
             .map { response ->
-                val responseBody =
-                    response.body
-                        ?: throw Error("Unable to fetch page list of chapter ${chapter.chapter_number}")
+                val responseBody = response.body
                 val chapterInfo: RawChapterInfo = json.decodeFromString(responseBody.string())
 
                 chapterInfo.pageItem.map { page ->
@@ -158,7 +157,7 @@ class Nekopost : ParsedHttpSource() {
                     }
                     Page(
                         index = page.pageNo,
-                        imageUrl = imgUrl
+                        imageUrl = imgUrl,
                     )
                 }
             }
@@ -168,18 +167,18 @@ class Nekopost : ParsedHttpSource() {
 
     override fun popularMangaRequest(page: Int): Request {
         if (page <= 1) existingProject.clear()
-
-        return GET("$latestMangaEndpoint/$page")
+        // API has a bug that sometime it returns null on first page
+        return GET("$latestMangaEndpoint/${if (firstPageNulled) page else page - 1 }", headers)
     }
 
     override fun popularMangaParse(response: Response): MangasPage {
-        val responseBody = response.body ?: throw Error("Unable to fetch mangas")
+        val responseBody = response.body
         val projectList: RawProjectSummaryList = json.decodeFromString(responseBody.string())
 
-        val mangaList: List<SManga> =
+        val mangaList: List<SManga> = if (projectList.listChapter != null) {
             projectList.listChapter
-                ?.filter { !existingProject.contains(it.projectId) }
-                ?.map {
+                .filter { !existingProject.contains(it.projectId) }
+                .map {
                     SManga.create().apply {
                         url = it.projectId
                         title = it.projectName
@@ -188,7 +187,11 @@ class Nekopost : ParsedHttpSource() {
                         initialized = false
                         status = 0
                     }
-                } ?: return MangasPage(emptyList(), hasNextPage = false)
+                }
+        } else {
+            firstPageNulled = true // API has a bug that sometime it returns null on first page
+            return MangasPage(emptyList(), hasNextPage = false)
+        }
 
         mangaList.forEach { existingProject.add(it.url) }
 
@@ -209,19 +212,19 @@ class Nekopost : ParsedHttpSource() {
     override fun fetchSearchManga(
         page: Int,
         query: String,
-        filters: FilterList
+        filters: FilterList,
     ): Observable<MangasPage> {
         return client.newCall(GET("$fileHost/dataJson/dataProjectName.json"))
             .asObservableSuccess()
             .map { response ->
-                val responseBody = response.body ?: throw Error("Unable to fetch title list")
+                val responseBody = response.body
                 val projectList: List<RawProjectNameListItem> =
                     json.decodeFromString(responseBody.string())
 
                 val mangaList: List<SManga> = projectList.filter { project ->
                     Regex(
                         query,
-                        setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE)
+                        setOf(RegexOption.IGNORE_CASE, RegexOption.MULTILINE),
                     ).find(project.npName) != null
                 }.map { project ->
                     SManga.create().apply {

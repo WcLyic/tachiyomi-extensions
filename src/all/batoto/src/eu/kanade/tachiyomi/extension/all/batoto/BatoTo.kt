@@ -5,7 +5,8 @@ import android.content.SharedPreferences
 import androidx.preference.CheckBoxPreference
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceScreen
-import com.squareup.duktape.Duktape
+import eu.kanade.tachiyomi.lib.cryptoaes.CryptoAES
+import eu.kanade.tachiyomi.lib.cryptoaes.Deobfuscator
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.POST
 import eu.kanade.tachiyomi.network.asObservableSuccess
@@ -45,7 +46,7 @@ import java.util.concurrent.TimeUnit
 
 open class BatoTo(
     final override val lang: String,
-    private val siteLang: String
+    private val siteLang: String,
 ) : ConfigurableSource, ParsedHttpSource() {
 
     private val preferences: SharedPreferences by lazy {
@@ -95,49 +96,6 @@ open class BatoTo(
     private fun getMirrorPref(): String? = preferences.getString("${MIRROR_PREF_KEY}_$lang", MIRROR_PREF_DEFAULT_VALUE)
     private fun getAltChapterListPref(): Boolean = preferences.getBoolean("${ALT_CHAPTER_LIST_PREF_KEY}_$lang", ALT_CHAPTER_LIST_PREF_DEFAULT_VALUE)
 
-    companion object {
-        private const val MIRROR_PREF_KEY = "MIRROR"
-        private const val MIRROR_PREF_TITLE = "Mirror"
-        private val MIRROR_PREF_ENTRIES = arrayOf(
-            "bato.to",
-            "batocc.com",
-            "batotoo.com",
-            "batotwo.com",
-            "battwo.com",
-            "comiko.net",
-            "mangatoto.com",
-            "mangatoto.net",
-            "mangatoto.org",
-            "mycordant.co.uk",
-            "dto.to",
-            "hto.to",
-            "mto.to",
-            "wto.to"
-        )
-        private val MIRROR_PREF_ENTRY_VALUES = arrayOf(
-            "https://bato.to",
-            "https://batocc.com",
-            "https://batotoo.com",
-            "https://batotwo.com",
-            "https://battwo.com",
-            "https://comiko.net",
-            "https://mangatoto.com",
-            "https://mangatoto.net",
-            "https://mangatoto.org",
-            "https://mycordant.co.uk",
-            "https://dto.to",
-            "https://hto.to",
-            "https://mto.to",
-            "https://wto.to"
-        )
-        private val MIRROR_PREF_DEFAULT_VALUE = MIRROR_PREF_ENTRY_VALUES[0]
-
-        private const val ALT_CHAPTER_LIST_PREF_KEY = "ALT_CHAPTER_LIST"
-        private const val ALT_CHAPTER_LIST_PREF_TITLE = "Alternative Chapter List"
-        private const val ALT_CHAPTER_LIST_PREF_SUMMARY = "If checked, uses an alternate chapter list"
-        private const val ALT_CHAPTER_LIST_PREF_DEFAULT_VALUE = false
-    }
-
     override val supportsLatest = true
     private val json: Json by injectLazy()
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
@@ -185,7 +143,7 @@ open class BatoTo(
                 val id = query.substringAfter("ID:")
                 client.newCall(GET("$baseUrl/series/$id", headers)).asObservableSuccess()
                     .map { response ->
-                        queryIDParse(response, id)
+                        queryIDParse(response)
                     }
             }
             query.isNotBlank() -> {
@@ -199,6 +157,7 @@ open class BatoTo(
                                 url.addQueryParameter("mode", "letter")
                             }
                         }
+                        else -> { /* Do Nothing */ }
                     }
                 }
                 client.newCall(GET(url.build().toString(), headers)).asObservableSuccess()
@@ -241,7 +200,8 @@ open class BatoTo(
                         is GenreGroupFilter -> {
                             with(filter) {
                                 url.addQueryParameter(
-                                    "genres", included.joinToString(",") + "|" + excluded.joinToString(",")
+                                    "genres",
+                                    included.joinToString(",") + "|" + excluded.joinToString(","),
                                 )
                             }
                         }
@@ -263,6 +223,7 @@ open class BatoTo(
                         }
                         is MinChapterTextFilter -> min = filter.state
                         is MaxChapterTextFilter -> max = filter.state
+                        else -> { /* Do Nothing */ }
                     }
                 }
                 url.addQueryParameter("page", page.toString())
@@ -279,7 +240,7 @@ open class BatoTo(
         }
     }
 
-    private fun queryIDParse(response: Response, id: String): MangasPage {
+    private fun queryIDParse(response: Response): MangasPage {
         val document = response.asJsoup()
         val infoElement = document.select("div#mainer div.container-fluid")
         val manga = SManga.create()
@@ -306,7 +267,7 @@ open class BatoTo(
     }
 
     private fun queryHistoryParse(response: Response): MangasPage {
-        val json = json.decodeFromString<JsonObject>(response.body!!.string())
+        val json = json.decodeFromString<JsonObject>(response.body.string())
         val html = json.jsonObject["html"]!!.jsonPrimitive.content
 
         val document = Jsoup.parse(html, response.request.url.toString())
@@ -384,8 +345,8 @@ open class BatoTo(
                 when {
                     manga.url.startsWith("http") -> manga.url
                     else -> "$baseUrl${manga.url}"
-                }
-            )
+                },
+            ),
         ).execute().asJsoup()
         if (getAltChapterListPref() || checkChapterLists(url)) {
             val id = manga.url.substringBeforeLast("/").substringAfterLast("/").trim()
@@ -397,12 +358,12 @@ open class BatoTo(
     }
 
     private fun altChapterParse(response: Response, title: String): List<SChapter> {
-        return Jsoup.parse(response.body!!.string(), response.request.url.toString(), Parser.xmlParser())
+        return Jsoup.parse(response.body.string(), response.request.url.toString(), Parser.xmlParser())
             .select("channel > item").map { item ->
                 SChapter.create().apply {
-                    url = item.selectFirst("guid").text()
-                    name = item.selectFirst("title").text().substringAfter(title).trim()
-                    date_upload = SimpleDateFormat("E, dd MMM yyyy H:m:s Z", Locale.US).parse(item.selectFirst("pubDate").text())?.time ?: 0L
+                    url = item.selectFirst("guid")!!.text()
+                    name = item.selectFirst("title")!!.text().substringAfter(title).trim()
+                    date_upload = SimpleDateFormat("E, dd MMM yyyy H:m:s Z", Locale.US).parse(item.selectFirst("pubDate")!!.text())?.time ?: 0L
                 }
             }
     }
@@ -496,76 +457,21 @@ open class BatoTo(
     }
 
     override fun pageListParse(document: Document): List<Page> {
-        val pages = mutableListOf<Page>()
+        val script = document.selectFirst("script:containsData(imgHttpLis):containsData(batoWord):containsData(batoPass)")?.html()
+            ?: throw RuntimeException("Couldn't find script with image data.")
 
-        val script = document.select("script").html()
+        val imgHttpLisString = script.substringAfter("const imgHttpLis =").substringBefore(";").trim()
+        val imgHttpLis = json.parseToJsonElement(imgHttpLisString).jsonArray.map { it.jsonPrimitive.content }
+        val batoWord = script.substringAfter("const batoWord =").substringBefore(";").trim()
+        val batoPass = script.substringAfter("const batoPass =").substringBefore(";").trim()
 
-        if (script.contains("var images =")) {
-            /*
-             * During kotlinx.serialization migration, the pre-existing code seemed to not work
-             * Could not find a case where code would run in practice, so it was commented out.
-             */
-            throw RuntimeException("Unexpected Branch: Please File A Bug Report describing this issue")
-            // val imgJson = json.parseToJsonElement(script.substringAfter("var images = ").substringBefore(";")).jsonObject
-            // imgJson.keys.forEachIndexed { i, s -> pages.add(Page(i, imageUrl = imgJson[s]!!.jsonPrimitive.content)) }
-        } else if (script.contains("const server =")) { // bato.to
-            val duktape = Duktape.create()
-            val encryptedServer = script.substringAfter("const server = ").substringBefore(";")
-            val batojs = duktape.evaluate(script.substringAfter("const batojs = ").substringBefore(";")).toString()
-            val decryptScript = cryptoJS + "CryptoJS.AES.decrypt($encryptedServer, \"$batojs\").toString(CryptoJS.enc.Utf8);"
-            val server = duktape.evaluate(decryptScript).toString().replace("\"", "")
-            duktape.close()
+        val evaluatedPass: String = Deobfuscator.deobfuscateJsPassword(batoPass)
+        val imgAccListString = CryptoAES.decrypt(batoWord.removeSurrounding("\""), evaluatedPass)
+        val imgAccList = json.parseToJsonElement(imgAccListString).jsonArray.map { it.jsonPrimitive.content }
 
-            json.parseToJsonElement(script.substringAfter("const images = ").substringBefore(";")).jsonArray
-                .forEachIndexed { i, it ->
-                    val imgUrl = it.jsonPrimitive.content
-                    if (script.contains("bato.to/images")) {
-                        pages.add(Page(i, imageUrl = imgUrl))
-                    } else {
-                        pages.add(Page(i, imageUrl = if (server.startsWith("http")) "${server}$imgUrl" else "https:${server}$imgUrl"))
-                    }
-                }
-        } else if (script.contains("const imgHttpLis = ") && script.contains("const batoWord = ") && script.contains(
-                "const batoPass = "
-            )
-        ) {
-            val duktape = Duktape.create()
-            val imgHttpLis = json.parseToJsonElement(
-                script.substringAfter("const imgHttpLis = ").substringBefore(";")
-            ).jsonArray
-            val batoWord = script.substringAfter("const batoWord = ").substringBefore(";")
-            val batoPass =
-                duktape.evaluate(script.substringAfter("const batoPass = ").substringBefore(";"))
-                    .toString()
-            val input =
-                cryptoJS + "CryptoJS.AES.decrypt($batoWord, \"$batoPass\").toString(CryptoJS.enc.Utf8);"
-            val imgWordLis = json.parseToJsonElement(duktape.evaluate(input).toString()).jsonArray
-            duktape.close()
-
-            if (imgHttpLis.size == imgWordLis.size) {
-                imgHttpLis.forEachIndexed { i: Int, item ->
-                    val imageUrl =
-                        "${item.jsonPrimitive.content}?${imgWordLis.get(i).jsonPrimitive.content}"
-                    pages.add(
-                        Page(
-                            i,
-                            imageUrl = imageUrl
-                        )
-                    )
-                }
-            }
+        return imgHttpLis.zip(imgAccList).mapIndexed { i, (imgUrl, imgAcc) ->
+            Page(i, imageUrl = "$imgUrl?$imgAcc")
         }
-
-        return pages
-    }
-
-    private val cryptoJS by lazy {
-        client.newCall(
-            GET(
-                "https://cdnjs.cloudflare.com/ajax/libs/crypto-js/4.0.0/crypto-js.min.js",
-                headers
-            )
-        ).execute().body!!.string()
     }
 
     override fun imageUrlParse(document: Document): String = throw UnsupportedOperationException("Not used")
@@ -792,30 +698,41 @@ open class BatoTo(
         TriStateFilterOption("manhwa", "Manhwa"),
         TriStateFilterOption("webtoon", "Webtoon"),
         TriStateFilterOption("western", "Western"),
-        TriStateFilterOption("josei", "Josei"),
-        TriStateFilterOption("seinen", "Seinen"),
-        TriStateFilterOption("shoujo", "Shoujo"),
-        TriStateFilterOption("shoujo_ai", "Shoujo ai"),
-        TriStateFilterOption("shounen", "Shounen"),
-        TriStateFilterOption("shounen_ai", "Shounen ai"),
-        TriStateFilterOption("yaoi", "Yaoi"),
-        TriStateFilterOption("yuri", "Yuri"),
-        TriStateFilterOption("ecchi", "Ecchi"),
-        TriStateFilterOption("mature", "Mature"),
-        TriStateFilterOption("adult", "Adult"),
+
+        TriStateFilterOption("shoujo", "Shoujo(G)"),
+        TriStateFilterOption("shounen", "Shounen(B)"),
+        TriStateFilterOption("josei", "Josei(W)"),
+        TriStateFilterOption("seinen", "Seinen(M)"),
+        TriStateFilterOption("yuri", "Yuri(GL)"),
+        TriStateFilterOption("yaoi", "Yaoi(BL)"),
+        TriStateFilterOption("futa", "Futa(WL)"),
+        TriStateFilterOption("bara", "Bara(ML)"),
+
         TriStateFilterOption("gore", "Gore"),
+        TriStateFilterOption("bloody", "Bloody"),
         TriStateFilterOption("violence", "Violence"),
+        TriStateFilterOption("ecchi", "Ecchi"),
+        TriStateFilterOption("adult", "Adult"),
+        TriStateFilterOption("mature", "Mature"),
         TriStateFilterOption("smut", "Smut"),
         TriStateFilterOption("hentai", "Hentai"),
+
         TriStateFilterOption("_4_koma", "4-Koma"),
         TriStateFilterOption("action", "Action"),
         TriStateFilterOption("adaptation", "Adaptation"),
         TriStateFilterOption("adventure", "Adventure"),
+        TriStateFilterOption("age_gap", "Age Gap"),
         TriStateFilterOption("aliens", "Aliens"),
         TriStateFilterOption("animals", "Animals"),
         TriStateFilterOption("anthology", "Anthology"),
+        TriStateFilterOption("beasts", "Beasts"),
+        TriStateFilterOption("bodyswap", "Bodyswap"),
         TriStateFilterOption("cars", "cars"),
+        TriStateFilterOption("cheating_infidelity", "Cheating/Infidelity"),
+        TriStateFilterOption("childhood_friends", "Childhood Friends"),
+        TriStateFilterOption("college_life", "College Life"),
         TriStateFilterOption("comedy", "Comedy"),
+        TriStateFilterOption("contest_winning", "Contest Winning"),
         TriStateFilterOption("cooking", "Cooking"),
         TriStateFilterOption("crime", "crime"),
         TriStateFilterOption("crossdressing", "Crossdressing"),
@@ -823,8 +740,11 @@ open class BatoTo(
         TriStateFilterOption("dementia", "Dementia"),
         TriStateFilterOption("demons", "Demons"),
         TriStateFilterOption("drama", "Drama"),
+        TriStateFilterOption("dungeons", "Dungeons"),
+        TriStateFilterOption("emperor_daughte", "Emperor's Daughter"),
         TriStateFilterOption("fantasy", "Fantasy"),
         TriStateFilterOption("fan_colored", "Fan-Colored"),
+        TriStateFilterOption("fetish", "Fetish"),
         TriStateFilterOption("full_color", "Full Color"),
         TriStateFilterOption("game", "Game"),
         TriStateFilterOption("gender_bender", "Gender Bender"),
@@ -839,7 +759,6 @@ open class BatoTo(
         TriStateFilterOption("isekai", "Isekai"),
         TriStateFilterOption("kids", "Kids"),
         TriStateFilterOption("loli", "Loli"),
-        TriStateFilterOption("lolicon", "lolicon"),
         TriStateFilterOption("magic", "Magic"),
         TriStateFilterOption("magical_girls", "Magical Girls"),
         TriStateFilterOption("martial_arts", "Martial Arts"),
@@ -853,22 +772,29 @@ open class BatoTo(
         TriStateFilterOption("netorare", "Netorare/NTR"),
         TriStateFilterOption("ninja", "Ninja"),
         TriStateFilterOption("office_workers", "Office Workers"),
+        TriStateFilterOption("omegaverse", "Omegaverse"),
         TriStateFilterOption("oneshot", "Oneshot"),
         TriStateFilterOption("parody", "parody"),
         TriStateFilterOption("philosophical", "Philosophical"),
         TriStateFilterOption("police", "Police"),
         TriStateFilterOption("post_apocalyptic", "Post-Apocalyptic"),
         TriStateFilterOption("psychological", "Psychological"),
+        TriStateFilterOption("regression", "Regression"),
         TriStateFilterOption("reincarnation", "Reincarnation"),
         TriStateFilterOption("reverse_harem", "Reverse Harem"),
+        TriStateFilterOption("reverse_isekai", "Reverse Isekai"),
         TriStateFilterOption("romance", "Romance"),
+        TriStateFilterOption("royal_family", "Royal Family"),
+        TriStateFilterOption("royalty", "Royalty"),
         TriStateFilterOption("samurai", "Samurai"),
         TriStateFilterOption("school_life", "School Life"),
         TriStateFilterOption("sci_fi", "Sci-Fi"),
         TriStateFilterOption("shota", "Shota"),
-        TriStateFilterOption("shotacon", "shotacon"),
+        TriStateFilterOption("shoujo_ai", "Shoujo Ai"),
+        TriStateFilterOption("shounen_ai", "Shounen Ai"),
+        TriStateFilterOption("showbiz", "Showbiz"),
         TriStateFilterOption("slice_of_life", "Slice of Life"),
-        TriStateFilterOption("sm_bdsm", "SM/BDSM"),
+        TriStateFilterOption("sm_bdsm", "SM/BDSM/SUB-DOM"),
         TriStateFilterOption("space", "Space"),
         TriStateFilterOption("sports", "Sports"),
         TriStateFilterOption("super_power", "Super Power"),
@@ -877,9 +803,12 @@ open class BatoTo(
         TriStateFilterOption("survival", "Survival"),
         TriStateFilterOption("thriller", "Thriller"),
         TriStateFilterOption("time_travel", "Time Travel"),
+        TriStateFilterOption("tower_climbing", "Tower Climbing"),
         TriStateFilterOption("traditional_games", "Traditional Games"),
         TriStateFilterOption("tragedy", "Tragedy"),
+        TriStateFilterOption("transmigration", "Transmigration"),
         TriStateFilterOption("vampires", "Vampires"),
+        TriStateFilterOption("villainess", "Villainess"),
         TriStateFilterOption("video_games", "Video Games"),
         TriStateFilterOption("virtual_reality", "Virtual Reality"),
         TriStateFilterOption("wuxia", "Wuxia"),
@@ -887,9 +816,11 @@ open class BatoTo(
         TriStateFilterOption("xuanhuan", "Xuanhuan"),
         TriStateFilterOption("zombies", "Zombies"),
         // Hidden Genres
+        TriStateFilterOption("shotacon", "shotacon"),
+        TriStateFilterOption("lolicon", "lolicon"),
         TriStateFilterOption("award_winning", "Award Winning"),
         TriStateFilterOption("youkai", "Youkai"),
-        TriStateFilterOption("uncategorized", "Uncategorized")
+        TriStateFilterOption("uncategorized", "Uncategorized"),
     )
 
     private fun getLangFilter() = listOf(
@@ -1001,4 +932,47 @@ open class BatoTo(
         CheckboxFilterOption("eu", "Basque"),
         CheckboxFilterOption("pt-PT", "Portuguese (Portugal)"),
     ).filterNot { it.value == siteLang }
+
+    companion object {
+        private const val MIRROR_PREF_KEY = "MIRROR"
+        private const val MIRROR_PREF_TITLE = "Mirror"
+        private val MIRROR_PREF_ENTRIES = arrayOf(
+            "bato.to",
+            "batocc.com",
+            "batotoo.com",
+            "batotwo.com",
+            "battwo.com",
+            "comiko.net",
+            "mangatoto.com",
+            "mangatoto.net",
+            "mangatoto.org",
+            "mycordant.co.uk",
+            "dto.to",
+            "hto.to",
+            "mto.to",
+            "wto.to",
+        )
+        private val MIRROR_PREF_ENTRY_VALUES = arrayOf(
+            "https://bato.to",
+            "https://batocc.com",
+            "https://batotoo.com",
+            "https://batotwo.com",
+            "https://battwo.com",
+            "https://comiko.net",
+            "https://mangatoto.com",
+            "https://mangatoto.net",
+            "https://mangatoto.org",
+            "https://mycordant.co.uk",
+            "https://dto.to",
+            "https://hto.to",
+            "https://mto.to",
+            "https://wto.to",
+        )
+        private val MIRROR_PREF_DEFAULT_VALUE = MIRROR_PREF_ENTRY_VALUES[0]
+
+        private const val ALT_CHAPTER_LIST_PREF_KEY = "ALT_CHAPTER_LIST"
+        private const val ALT_CHAPTER_LIST_PREF_TITLE = "Alternative Chapter List"
+        private const val ALT_CHAPTER_LIST_PREF_SUMMARY = "If checked, uses an alternate chapter list"
+        private const val ALT_CHAPTER_LIST_PREF_DEFAULT_VALUE = false
+    }
 }

@@ -23,7 +23,7 @@ class BuonDua() : ParsedHttpSource() {
     // Latest
     override fun latestUpdatesFromElement(element: Element): SManga {
         val manga = SManga.create()
-        manga.thumbnail_url = element.select("img").attr("abs:data-src")
+        manga.thumbnail_url = element.select("img").attr("abs:src")
         manga.title = element.select(".item-content .item-link").text()
         manga.setUrlWithoutDomain(element.select(".item-content .item-link").attr("abs:href"))
         return manga
@@ -65,7 +65,7 @@ class BuonDua() : ParsedHttpSource() {
         manga.title = document.select(".article-header").text()
         manga.description = document.select(".article-info > strong").text().trim()
         val genres = mutableListOf<String>()
-        document.select(".article-tags").first().select(".tags > .tag").forEach {
+        document.select(".article-tags").first()!!.select(".tags > .tag").forEach {
             genres.add(it.text().substringAfter("#"))
         }
         manga.genre = genres.joinToString(", ")
@@ -74,7 +74,7 @@ class BuonDua() : ParsedHttpSource() {
 
     override fun chapterFromElement(element: Element): SChapter {
         val chapter = SChapter.create()
-        chapter.setUrlWithoutDomain(element.select(".is-current").first().attr("abs:href"))
+        chapter.setUrlWithoutDomain(element.select(".is-current").first()!!.attr("abs:href"))
         chapter.chapter_number = 0F
         chapter.name = element.select(".article-header").text()
         chapter.date_upload = SimpleDateFormat("H:m DD-MM-yyyy", Locale.US).parse(element.select(".article-info > small").text())?.time ?: 0L
@@ -86,17 +86,17 @@ class BuonDua() : ParsedHttpSource() {
     // Pages
 
     override fun pageListParse(document: Document): List<Page> {
-        val numpages = document.selectFirst(".pagination-list").select(".pagination-link")
+        val numpages = document.selectFirst(".pagination-list")!!.select(".pagination-link")
         val pages = mutableListOf<Page>()
 
-        numpages.forEachIndexed() { index, page ->
+        numpages.forEachIndexed { index, page ->
             val doc = when (index) {
                 0 -> document
                 else -> client.newCall(GET(page.attr("abs:href"))).execute().asJsoup()
             }
-            doc.select(".article-fulltext img").forEachIndexed { i, it ->
-                val itUrl = it.attr("abs:data-src")
-                pages.add(Page(i, itUrl, itUrl))
+            doc.select(".article-fulltext img").forEach {
+                val itUrl = it.attr("abs:src")
+                pages.add(Page(pages.size, "", itUrl))
             }
         }
         return pages

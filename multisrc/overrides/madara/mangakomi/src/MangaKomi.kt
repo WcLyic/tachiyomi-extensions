@@ -7,8 +7,8 @@ import java.util.concurrent.TimeUnit
 
 class MangaKomi : Madara(
     "MangaKomi",
-    "https://mangakomi.com",
-    "en"
+    "https://mangakomi.io",
+    "en",
 ) {
 
     override val client: OkHttpClient = super.client.newBuilder()

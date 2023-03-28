@@ -57,15 +57,47 @@ Some alternative steps can be followed to ignore "repo" branch and skip unrelate
 <details><summary>Steps</summary>
 
 1. Make sure to delete "repo" branch in your fork. You may also want to disable Actions in the repo settings.
+
+    **Also make sure you are using the latest version of Git as many commands used here are pretty new.**
+
 2. Do a partial clone.
     ```bash
-    git clone --filter=blob:none --no-checkout <fork-repo-url>
+    git clone --filter=blob:none --sparse <fork-repo-url>
     cd tachiyomi-extensions/
     ```
 3. Configure sparse checkout.
+
+    There are two modes of pattern matching. The default is cone (🔺) mode.
+    Cone mode enables significantly faster pattern matching for big monorepos
+    and the sparse index feature to make Git commands more responsive.
+    In this mode, you can only filter by file path, which is less flexible
+    and might require more work when the project structure changes.
+
+    You can skip this code block to use legacy mode if you want easier filters.
+    It won't be much slower as the repo doesn't have that many files.
+
+    To enable cone mode together with sparse index, follow these steps:
+
+    ```bash
+    git sparse-checkout set --cone --sparse-index
+    # add project folders
+    git sparse-checkout add .run buildSrc core gradle lib multisrc/src/main/java/generator
+    # add a single source
+    git sparse-checkout add src/<lang>/<source>
+    # add a multisrc theme
+    git sparse-checkout add multisrc/src/main/java/eu/kanade/tachiyomi/multisrc/<source>
+    git sparse-checkout add multisrc/overrides/<source>
+    ```
+
+    To remove a source, open `.git/info/sparse-checkout` and delete the exact
+    lines you typed when adding it. Don't touch the other auto-generated lines
+    unless you fully understand how cone mode works, or you might break it.
+
+    To use the legacy non-cone mode, follow these steps:
+
     ```bash
     # enable sparse checkout
-    git sparse-checkout set
+    git sparse-checkout set --no-cone
     # edit sparse checkout filter
     vim .git/info/sparse-checkout
     # alternatively, if you have VS Code installed
@@ -85,6 +117,10 @@ Some alternative steps can be followed to ignore "repo" branch and skip unrelate
     # or type the source name directly
     <source>
     ```
+
+    Explanation: the rules are like `gitignore`. We first exclude all sources
+    while retaining project folders, then add the needed sources back manually.
+
 4. Configure remotes.
     ```bash
     # add upstream
@@ -100,8 +136,6 @@ Some alternative steps can be followed to ignore "repo" branch and skip unrelate
     git remote update
     # track master of upstream instead of fork
     git branch master -u upstream/master
-    # checkout
-    git switch master
     ```
 5. Useful configurations. (optional)
     ```bash
@@ -109,10 +143,22 @@ Some alternative steps can be followed to ignore "repo" branch and skip unrelate
     git config remote.origin.prune true
     # fast-forward only when pulling master branch
     git config pull.ff only
+    # Add an alias to sync master branch without fetching useless blobs.
+    # If you run `git pull` to fast-forward in a blobless clone like this,
+    # all blobs (files) in the new commits are still fetched regardless of
+    # sparse rules, which makes the local repo accumulate unused files.
+    # Use `git sync-master` to avoid this. Be careful if you have changes
+    # on master branch, which is not a good practice.
+    git config alias.sync-master '!git switch master && git fetch upstream && git reset --keep FETCH_HEAD'
     ```
 6. Later, if you change the sparse checkout filter, run `git sparse-checkout reapply`.
 
-Read more on [partial clone](https://github.blog/2020-12-21-get-up-to-speed-with-partial-clone-and-shallow-clone/), [sparse checkout](https://github.blog/2020-01-17-bring-your-monorepo-down-to-size-with-sparse-checkout/) and [negative refspecs](https://github.blog/2020-10-19-git-2-29-released/#user-content-negative-refspecs).
+Read more on
+[Git's object model](https://github.blog/2020-12-17-commits-are-snapshots-not-diffs/),
+[partial clone](https://github.blog/2020-12-21-get-up-to-speed-with-partial-clone-and-shallow-clone/),
+[sparse checkout](https://github.blog/2020-01-17-bring-your-monorepo-down-to-size-with-sparse-checkout/),
+[sparse index](https://github.blog/2021-11-10-make-your-monorepo-feel-small-with-gits-sparse-index/),
+and [negative refspecs](https://github.blog/2020-10-19-git-2-29-released/#user-content-negative-refspecs).
 </details>
 
 ## Getting help
@@ -190,10 +236,10 @@ apply from: "$rootDir/common.gradle"
 | `pkgNameSuffix` | A unique suffix added to `eu.kanade.tachiyomi.extension`. The language and the site name should be enough. Remember your extension code implementation must be placed in this package. |
 | `extClass` | Points to the class that implements `Source`. You can use a relative path starting with a dot (the package name is the base path). This is used to find and instantiate the source(s). |
 | `extVersionCode` | The extension version code. This must be a positive integer and incremented with any change to the code. |
-| `libVersion` | (Optional, defaults to `1.3`) The version of the [extensions library](https://github.com/tachiyomiorg/extensions-lib) used. |
+| `libVersion` | (Optional, defaults to `1.4`) The version of the [extensions library](https://github.com/tachiyomiorg/extensions-lib) used. |
 | `isNsfw` | (Optional, defaults to `false`) Flag to indicate that a source contains NSFW content. |
 
-The extension's version name is generated automatically by concatenating `libVersion` and `extVersionCode`. With the example used above, the version would be `1.3.1`.
+The extension's version name is generated automatically by concatenating `libVersion` and `extVersionCode`. With the example used above, the version would be `1.4.1`.
 
 ### Core dependencies
 
@@ -213,22 +259,15 @@ dependencies {
 
 #### Additional dependencies
 
-You may find yourself needing additional functionality and wanting to add more dependencies to your `build.gradle` file. Since extensions are run within the main Tachiyomi app, you can make use of [its dependencies](https://github.com/tachiyomiorg/tachiyomi/blob/master/app/build.gradle.kts).
-
-For example, an extension that needs coroutines, it could add the following:
-
-```gradle
-dependencies {
-    compileOnly(libs.bundles.coroutines)
-}
-```
+If you find yourself needing additional functionality, you can add more dependencies to your `build.gradle` file.
+Many of [the dependencies](https://github.com/tachiyomiorg/tachiyomi/blob/master/app/build.gradle.kts) from the main Tachiyomi app are exposed to extensions by default.
 
 > Note that several dependencies are already exposed to all extensions via Gradle version catalog.
 > To view which are available view `libs.versions.toml` under the `gradle` folder
 
-Notice that we're using `compileOnly` instead of `implementation`, since the app already contains it. You could use `implementation` instead for a new dependency, or you prefer not to rely on whatever the main app has at the expense of app size.
+Notice that we're using `compileOnly` instead of `implementation` if the app already contains it. You could use `implementation` instead for a new dependency, or you prefer not to rely on whatever the main app has at the expense of app size.
 
-Note that using `compileOnly` restricts you to versions that must be compatible with those used in [Tachiyomi v0.10.12+](https://github.com/tachiyomiorg/tachiyomi/blob/v0.10.12/app/build.gradle.kts) for proper backwards compatibility.
+Note that using `compileOnly` restricts you to versions that must be compatible with those used in [the latest stable version of Tachiyomi](https://github.com/tachiyomiorg/tachiyomi/releases/latest).
 
 ### Extension main class
 
@@ -311,6 +350,9 @@ open class UriPartFilter(displayName: String, private val vals: Array<Pair<Strin
     - If a `SManga` is cached, `fetchMangaDetails` will be only called when the user does a manual update (Swipe-to-Refresh).
 - `fetchChapterList` is called to display the chapter list.
     - **The list should be sorted descending by the source order**.
+- `getMangaUrl` is called when the user taps "Open in WebView".
+  - If the source uses an API to fetch the data, consider overriding this method to return the manga absolute URL in the website instead.
+  - It defaults to the URL provided to the request in `mangaDetailsRequest`.
 
 #### Chapter
 
@@ -339,6 +381,9 @@ open class UriPartFilter(displayName: String, private val vals: Array<Pair<Strin
       - In older versions, the default date is always the fetch date.
       - In newer versions, this is the same if every (new) chapter has `0L` returned.
       - However, if the source only provides the upload date of the latest chapter, you can now set it to the latest chapter and leave other chapters default. The app will automatically set it (instead of fetch date) to every new chapter and leave old chapters' dates untouched.
+- `getChapterUrl` is called when the user taps "Open in WebView" in the reader.
+  - If the source uses an API to fetch the data, consider overriding this method to return the chapter absolute URL in the website instead.
+  - It defaults to the URL provided to the request in `pageListRequest`.
 
 #### Chapter Pages
 
@@ -367,6 +412,15 @@ To test if the URL intent filter is working as expected, you can try opening the
 ```console
 $ adb shell am start -d "<your-link>" -a android.intent.action.VIEW
 ```
+
+#### Update strategy
+
+There is some cases where titles in a source will always only have the same chapter list (i.e. immutable), and don't need to be included in a global update of the app because of that, saving a lot of requests and preventing causing unnecessary damage to the source servers. To change the update strategy of a `SManga`, use the `update_strategy` field. You can find below a description of the current possible values.
+
+- `UpdateStrategy.ALWAYS_UPDATE`: Titles marked as always update will be included in the library update if they aren't excluded by additional restrictions.
+- `UpdateStrategy.ONLY_FETCH_ONCE`: Titles marked as only fetch once will be automatically skipped during library updates. Useful for cases where the series is previously known to be finished and have only a single chapter, for example.
+
+If not set, it defaults to `ALWAYS_UPDATE`.
 
 #### Renaming existing sources
 
@@ -557,7 +611,7 @@ Inspecting the Logcat allows you to get a good look at the call flow and it's mo
 If you want to take a deeper look into the network flow, such as taking a look into the request and response bodies, you can use an external tool like `mitm-proxy`.
 
 #### Setup your proxy server
-We are going to use [mitm-proxy](https://mitmproxy.org/) but you can replace it with any other Web Debugger (i.e. Charles, burp, Fiddler etc). To install and execute, follow the commands bellow.
+We are going to use [mitm-proxy](https://mitmproxy.org/) but you can replace it with any other Web Debugger (i.e. Charles, Burp Suite, Fiddler etc). To install and execute, follow the commands bellow.
 
 ```console
 Install the tool.
@@ -582,14 +636,28 @@ Since most of the manga sources are going to use HTTPS, we need to disable SSL v
 
 
 ```kotlin
-class MangaSource : MadTheme(
+package eu.kanade.tachiyomi.extension.en.mangasource
+import eu.kanade.tachiyomi.multisrc.mangatheme.mangasource
+
+import android.annotation.SuppressLint
+import okhttp3.OkHttpClient
+import java.net.InetSocketAddress
+import java.net.Proxy
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
+import javax.net.ssl.SSLContext
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
+
+class MangaSource : MangaTheme(
     "MangaSource",
     "https://example.com",
     "en"
 ) {
     private fun OkHttpClient.Builder.ignoreAllSSLErrors(): OkHttpClient.Builder {
-        val naiveTrustManager = object : X509TrustManager {
-            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        val naiveTrustManager = @SuppressLint("CustomX509TrustManager")
+        object : X509TrustManager {
+            override fun getAcceptedIssuers(): Array<X509Certificate> = emptyArray()
             override fun checkClientTrusted(certs: Array<X509Certificate>, authType: String) = Unit
             override fun checkServerTrusted(certs: Array<X509Certificate>, authType: String) = Unit
         }
@@ -600,15 +668,15 @@ class MangaSource : MadTheme(
         }.socketFactory
 
         sslSocketFactory(insecureSocketFactory, naiveTrustManager)
-        hostnameVerifier(HostnameVerifier { _, _ -> true })
+        hostnameVerifier { _, _ -> true }
         return this
     }
 
     override val client: OkHttpClient = network.cloudflareClient.newBuilder()
         .ignoreAllSSLErrors()
         .proxy(Proxy(Proxy.Type.HTTP, InetSocketAddress("10.0.2.2", 8080)))
-        ....
         .build()
+}
 ```
 
 Note: `10.0.2.2` is usually the address of your loopback interface in the android emulator. If Tachiyomi tells you that it's unable to connect to 10.0.2.2:8080 you will likely need to change it (the same if you are using hardware device).

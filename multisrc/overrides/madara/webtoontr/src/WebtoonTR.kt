@@ -8,7 +8,5 @@ class WebtoonTR : Madara(
     "Webtoon TR",
     "https://webtoon-tr.com",
     "tr",
-    SimpleDateFormat("dd/MM/yyy", Locale("tr"))
-) {
-    override val useNewChapterEndpoint = true
-}
+    SimpleDateFormat("dd/MM/yyy", Locale("tr")),
+)

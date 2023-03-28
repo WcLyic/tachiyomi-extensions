@@ -1,3 +1,41 @@
+## 1.4.46
+
+Minimum Komga version required: `0.151.0`
+
+### Feat
+
+* Update to extension-lib 1.4
+  - Clicking on chapter WebView should now open the chapter/book page.
+
+## 1.3.45
+
+Minimum Komga version required: `0.151.0`
+
+### Feat
+
+* Edit source display name
+
+## 1.3.44
+
+Minimum Komga version required: `0.151.0`
+
+### Fix
+
+* Better date/time parsing
+
+## 1.3.43
+
+Minimum Komga version required: `0.151.0`
+
+### Fix
+
+* Requests failing if address preference is saved with a trailing slash
+
+### Features
+
+* Add URL validation in the address preferences
+* Use a URL-focused keyboard when available while editing the address preferences
+
 ## 1.3.42
 
 Minimum Komga version required: `0.151.0`

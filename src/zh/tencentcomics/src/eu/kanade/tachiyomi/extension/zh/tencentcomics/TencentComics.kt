@@ -1,7 +1,7 @@
 package eu.kanade.tachiyomi.extension.zh.tencentcomics
 
 import android.util.Base64
-import com.squareup.duktape.Duktape
+import app.cash.quickjs.QuickJs
 import eu.kanade.tachiyomi.network.GET
 import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.source.model.Filter
@@ -29,6 +29,7 @@ import kotlin.collections.ArrayList
 class TencentComics : ParsedHttpSource() {
 
     override val name = "腾讯动漫"
+
     // its easier to parse the mobile version of the website
     override val baseUrl = "https://m.ac.qq.com"
 
@@ -140,13 +141,13 @@ class TencentComics : ParsedHttpSource() {
         var nonce = html.substringAfterLast("window[").substringAfter("] = ").substringBefore("</script>").trim()
 
         while (nonce.contains("document") || nonce.contains("window")) {
-            html = client.newCall(GET(desktopUrl + document.select("li.now-reading > a").attr("href"), headers)).execute().body!!.string()
+            html = client.newCall(GET(desktopUrl + document.select("li.now-reading > a").attr("href"), headers)).execute().body.string()
             nonce = html.substringAfterLast("window[").substringAfter("] = ").substringBefore("</script>").trim()
         }
 
         val raw = html.substringAfterLast("var DATA =").substringBefore("PRELOAD_NUM").trim().replace(Regex("^\'|\',$"), "")
         val decodePrefix = "var raw = \"$raw\"; var nonce = $nonce"
-        val full = Duktape.create().use { it.evaluate(decodePrefix + jsDecodeFunction).toString() }
+        val full = QuickJs.create().use { it.evaluate(decodePrefix + jsDecodeFunction).toString() }
         val chapterData = json.parseToJsonElement(String(Base64.decode(full, Base64.DEFAULT))).jsonObject
 
         if (!chapterData["chapter"]!!.jsonObject["canRead"]!!.jsonPrimitive.boolean) throw Exception("[此章节为付费内容]")
@@ -217,6 +218,7 @@ class TencentComics : ParsedHttpSource() {
                     is VipFilter -> {
                         vip = filter.toUriPart()
                     }
+                    else -> {}
                 }
             }
             GET("$desktopUrl/Comic/all/$genre${status}search/$popularity${vip}page/$page")
@@ -247,7 +249,7 @@ class TencentComics : ParsedHttpSource() {
         PopularityFilter(),
         VipFilter(),
         StatusFilter(),
-        GenreFilter()
+        GenreFilter(),
     )
 
     private open class UriPartFilter(displayName: String, val vals: Array<Pair<String, String>>) :
@@ -259,8 +261,8 @@ class TencentComics : ParsedHttpSource() {
         "热门人气/更新时间",
         arrayOf(
             Pair("热门人气", "hot/"),
-            Pair("更新时间", "time/")
-        )
+            Pair("更新时间", "time/"),
+        ),
     )
 
     private class VipFilter : UriPartFilter(
@@ -268,8 +270,8 @@ class TencentComics : ParsedHttpSource() {
         arrayOf(
             Pair("全部", ""),
             Pair("付费", "vip/2/"),
-            Pair("免费", "vip/1/")
-        )
+            Pair("免费", "vip/1/"),
+        ),
     )
 
     private class StatusFilter : UriPartFilter(
@@ -277,8 +279,8 @@ class TencentComics : ParsedHttpSource() {
         arrayOf(
             Pair("全部", ""),
             Pair("连载中", "finish/1/"),
-            Pair("已完结", "finish/2/")
-        )
+            Pair("已完结", "finish/2/"),
+        ),
     )
 
     private class GenreFilter : UriPartFilter(
@@ -300,8 +302,8 @@ class TencentComics : ParsedHttpSource() {
             Pair("竞技", "114"),
             Pair("武侠", "115"),
             Pair("历史", "116"),
-            Pair("战争", "117")
-        )
+            Pair("战争", "117"),
+        ),
     )
 
     companion object {

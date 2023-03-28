@@ -1,7 +1,6 @@
 package eu.kanade.tachiyomi.extension.all.mangaup
 
 import eu.kanade.tachiyomi.network.GET
-import eu.kanade.tachiyomi.network.asObservableSuccess
 import eu.kanade.tachiyomi.network.interceptor.rateLimitHost
 import eu.kanade.tachiyomi.source.model.FilterList
 import eu.kanade.tachiyomi.source.model.MangasPage
@@ -17,7 +16,6 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
-import okhttp3.internal.closeQuietly
 import rx.Observable
 import uy.kohesive.injekt.injectLazy
 
@@ -64,7 +62,7 @@ class MangaUp(override val lang: String) : HttpSource() {
 
     override fun searchMangaRequest(page: Int, query: String, filters: FilterList): Request {
         if (query.startsWith(PREFIX_ID_SEARCH) && query.matches(ID_SEARCH_PATTERN)) {
-            return titleDetailsRequest(query.removePrefix(PREFIX_ID_SEARCH))
+            return mangaDetailsRequest(query.removePrefix(PREFIX_ID_SEARCH))
         }
 
         val apiUrl = "$API_URL/manga/search".toHttpUrl().newBuilder()
@@ -99,7 +97,11 @@ class MangaUp(override val lang: String) : HttpSource() {
         return MangasPage(titles.map(MangaUpTitle::toSManga), hasNextPage = false)
     }
 
-    private fun titleDetailsRequest(mangaUrl: String): Request {
+    override fun getMangaUrl(manga: SManga): String = baseUrl + manga.url
+
+    override fun mangaDetailsRequest(manga: SManga): Request = mangaDetailsRequest(manga.url)
+
+    private fun mangaDetailsRequest(mangaUrl: String): Request {
         val titleId = mangaUrl.substringAfterLast("/")
 
         val apiUrl = "$API_URL/manga/detail".toHttpUrl().newBuilder()
@@ -111,20 +113,11 @@ class MangaUp(override val lang: String) : HttpSource() {
         return GET(apiUrl, headers)
     }
 
-    // Workaround to allow "Open in browser" use the real URL.
-    override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
-        return client.newCall(titleDetailsRequest(manga.url))
-            .asObservableSuccess()
-            .map { response ->
-                mangaDetailsParse(response).apply { initialized = true }
-            }
-    }
-
     override fun mangaDetailsParse(response: Response): SManga {
         return response.parseAs<MangaUpTitle>().toSManga()
     }
 
-    override fun chapterListRequest(manga: SManga): Request = titleDetailsRequest(manga.url)
+    override fun chapterListRequest(manga: SManga): Request = mangaDetailsRequest(manga.url)
 
     override fun chapterListParse(response: Response): List<SChapter> {
         val titleId = response.request.url.queryParameter("title_id")!!.toInt()
@@ -132,6 +125,8 @@ class MangaUp(override val lang: String) : HttpSource() {
         return response.parseAs<MangaUpTitle>().readableChapters
             .map { it.toSChapter(titleId) }
     }
+
+    override fun getChapterUrl(chapter: SChapter): String = baseUrl + chapter.url
 
     override fun pageListRequest(chapter: SChapter): Request {
         val chapterId = chapter.url.substringAfterLast("/")
@@ -158,7 +153,7 @@ class MangaUp(override val lang: String) : HttpSource() {
         val request = chain.request()
         val response = chain.proceed(request)
 
-        if (response.code == 401 && request.url.toString().contains(TITLE_THUMBNAIL_PATH)) {
+        if (response.code == 410 && request.url.toString().contains(TITLE_THUMBNAIL_PATH)) {
             val titleId = request.url.toString()
                 .substringAfter("/$TITLE_THUMBNAIL_PATH/")
                 .substringBefore(".webp")
@@ -169,7 +164,7 @@ class MangaUp(override val lang: String) : HttpSource() {
                 ?: title.thumbnailUrl
                 ?: return response
 
-            response.closeQuietly()
+            response.close()
             val thumbnailRequest = GET(thumbnailUrl, request.headers)
             return chain.proceed(thumbnailRequest)
         }
@@ -178,7 +173,7 @@ class MangaUp(override val lang: String) : HttpSource() {
     }
 
     private inline fun <reified T> Response.parseAs(): T = use {
-        json.decodeFromString(body?.string().orEmpty())
+        json.decodeFromString(body.string())
     }
 
     companion object {

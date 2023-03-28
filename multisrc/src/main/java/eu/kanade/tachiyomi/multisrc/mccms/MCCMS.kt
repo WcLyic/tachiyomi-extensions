@@ -29,7 +29,7 @@ open class MCCMS(
     override val name: String,
     override val baseUrl: String,
     override val lang: String = "zh",
-    hasCategoryPage: Boolean = true
+    hasCategoryPage: Boolean = false,
 ) : HttpSource() {
     override val supportsLatest = true
 
@@ -38,10 +38,11 @@ open class MCCMS(
     override val client by lazy {
         network.client.newBuilder()
             .rateLimitHost(baseUrl.toHttpUrl(), 2)
+            .addInterceptor(DecryptInterceptor)
             .build()
     }
 
-    private val pcHeaders by lazy { super.headersBuilder().build() }
+    val pcHeaders by lazy { super.headersBuilder().build() }
 
     override fun headersBuilder() = Headers.Builder()
         .add("User-Agent", System.getProperty("http.agent")!!)
@@ -84,17 +85,21 @@ open class MCCMS(
     override fun searchMangaParse(response: Response) = popularMangaParse(response)
 
     // preserve mangaDetailsRequest for WebView
-    override fun fetchMangaDetails(manga: SManga): Observable<SManga> =
-        client.newCall(GET("$baseUrl/api/data/comic?key=${manga.title}", headers))
+    override fun fetchMangaDetails(manga: SManga): Observable<SManga> {
+        val url = "$baseUrl/api/data/comic".toHttpUrl().newBuilder()
+            .addQueryParameter("key", manga.title)
+            .toString()
+        return client.newCall(GET(url, headers))
             .asObservableSuccess().map { response ->
                 val list: List<MangaDto> = response.parseAs()
                 list.find { it.url == manga.url }!!.toSManga().cleanup()
             }
+    }
 
     override fun mangaDetailsParse(response: Response) = throw UnsupportedOperationException("Not used.")
 
     override fun fetchChapterList(manga: SManga): Observable<List<SChapter>> = Single.create<List<SChapter>> { subscriber ->
-        val id = manga.url.substringAfterLast('/')
+        val id = getMangaId(manga.url)
         val dataResponse = client.newCall(GET("$baseUrl/api/data/chapter?mid=$id", headers)).execute()
         val dataList: List<ChapterDataDto> = dataResponse.parseAs() // unordered
         val dateMap = HashMap<Int, Long>(dataList.size * 2)
@@ -104,6 +109,8 @@ open class MCCMS(
         val result = list.map { it.toSChapter(date = dateMap[it.id.toInt()] ?: 0) }.asReversed()
         subscriber.onSuccess(result)
     }.toObservable()
+
+    protected open fun getMangaId(url: String) = url.substringAfterLast('/')
 
     override fun chapterListParse(response: Response) = throw UnsupportedOperationException("Not used.")
 
@@ -121,14 +128,15 @@ open class MCCMS(
 
     override fun imageUrlParse(response: Response) = throw UnsupportedOperationException("Not used.")
 
+    override fun imageRequest(page: Page) = GET(page.imageUrl!!, pcHeaders)
+
     private inline fun <reified T> Response.parseAs(): T = use {
-        @Suppress("OPT_IN_USAGE")
-        json.decodeFromStream<ResultDto<T>>(it.body!!.byteStream()).data
+        json.decodeFromStream<ResultDto<T>>(it.body.byteStream()).data
     }
 
-    private val genreData = GenreData(hasCategoryPage)
+    val genreData = GenreData(hasCategoryPage)
 
-    private fun fetchGenres() {
+    fun fetchGenres() {
         if (genreData.status != GenreData.NOT_FETCHED) return
         genreData.status = GenreData.FETCHING
         thread {
