@@ -142,7 +142,6 @@ class Dmzj : ConfigurableSource, HttpSource() {
         if (id !in preferences.hiddenList) {
             fetchMangaInfoV4(id)?.run { return toSManga() }
         }
-        throw Exception("目前无法获取特殊漫画类型 (2) 的详情 (ID: $id)")
         val response = client.newCall(GET(ApiV3.mangaInfoUrlV1(id), headers)).execute()
         return ApiV3.parseMangaDetailsV1(response)
     }
@@ -171,7 +170,6 @@ class Dmzj : ConfigurableSource, HttpSource() {
                     return@fromCallable result.parseChapterList()
                 }
             }
-            throw Exception("目前无法获取特殊漫画的章节目录 (ID: $id)")
             val response = client.newCall(GET(ApiV3.mangaInfoUrlV1(id), headers)).execute()
             ApiV3.parseChapterListV1(response)
         }
