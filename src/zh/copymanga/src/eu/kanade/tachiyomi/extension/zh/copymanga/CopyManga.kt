@@ -233,13 +233,13 @@ class CopyManga : ConfigurableSource, HttpSource() {
     }
 
     override fun headersBuilder() = super.headersBuilder()
-        .set("user-agent", "COPY/2.0.7")
+        .set("user-agent", "COPY/2.1.7")
         .set("source", "copyApp")
         .set("webp", if (preferences.getBoolean(CHANGE_WEBP_OPTION, false)) "1" else "0")
-        .set("authorization", "Token ba197de5d929b82447afc3e2c73456ed221ee9e4")
+        .set("authorization", "Token cfc0e829cfcdbfbd8be4791a95a91da598a7ed9b")
         .set("platform", "3")
-        .set("referer", "com.copymanga.app-2.0.7")
-        .set("version", "2.0.7")
+        .set("referer", "com.copymanga.app-2.1.7")
+        .set("version", "2.1.7")
         .set("region", if (preferences.getBoolean(CHANGE_CDN_OVERSEAS, false)) "0" else "1")
 
     // Unused, we can get image urls directly from the chapter page
@@ -429,6 +429,6 @@ class CopyManga : ConfigurableSource, HttpSource() {
         private const val CHANGE_CDN_OVERSEAS = "changeCDN"
         private const val CHANGE_WEBP_OPTION = "changeWebp"
         private const val API_URL_PREF = "apiUrl"
-        private val APIURLS = arrayOf("api.copymanga.org", "api.mangacopy.com", "api.copymanga.net", "api.copymanga.info", "api.copymanga.tv")
+        private val APIURLS = arrayOf("api.mangacopy.com", "api.copymanga.tv", "api.mangacopy.com", "api.copymanga.site")
     }
 }
