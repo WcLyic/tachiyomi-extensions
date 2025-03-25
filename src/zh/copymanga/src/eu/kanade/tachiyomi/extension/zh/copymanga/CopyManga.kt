@@ -233,13 +233,13 @@ class CopyManga : ConfigurableSource, HttpSource() {
     }
 
     override fun headersBuilder() = super.headersBuilder()
-        .set("user-agent", "COPY/2.2.0")
+        .set("user-agent", "COPY/2.2.6")
         .set("source", "copyApp")
         .set("webp", if (preferences.getBoolean(CHANGE_WEBP_OPTION, false)) "1" else "0")
         .set("authorization", "Token cfc0e829cfcdbfbd8be4791a95a91da598a7ed9b")
         .set("platform", "3")
-        .set("referer", "com.copymanga.app-2.2.0")
-        .set("version", "2.2.0")
+        .set("referer", "com.copymanga.app-2.2.6")
+        .set("version", "2.2.6")
         .set("region", if (preferences.getBoolean(CHANGE_CDN_OVERSEAS, false)) "0" else "1")
 
     // Unused, we can get image urls directly from the chapter page
