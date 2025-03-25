@@ -233,13 +233,13 @@ class CopyManga : ConfigurableSource, HttpSource() {
     }
 
     override fun headersBuilder() = super.headersBuilder()
-        .set("user-agent", "COPY/2.2.6")
+        .set("user-agent", "COPY/${preferences.getString(VERSION_PREF, DEFAULT_VERSION)}")
         .set("source", "copyApp")
         .set("webp", if (preferences.getBoolean(CHANGE_WEBP_OPTION, false)) "1" else "0")
         .set("authorization", "Token cfc0e829cfcdbfbd8be4791a95a91da598a7ed9b")
         .set("platform", "3")
-        .set("referer", "com.copymanga.app-2.2.6")
-        .set("version", "2.2.6")
+        .set("referer", "com.copymanga.app-${preferences.getString(VERSION_PREF, DEFAULT_VERSION)}")
+        .set("version", preferences.getString(VERSION_PREF, DEFAULT_VERSION) ?: DEFAULT_VERSION)
         .set("region", if (preferences.getBoolean(CHANGE_CDN_OVERSEAS, false)) "0" else "1")
 
     // Unused, we can get image urls directly from the chapter page
@@ -422,6 +422,25 @@ class CopyManga : ConfigurableSource, HttpSource() {
         screen.addPreference(cdnPreference)
         screen.addPreference(webpPreference)
         screen.addPreference(apiUrlPref)
+
+        val versionPreference = androidx.preference.EditTextPreference(screen.context).apply {
+            key = VERSION_PREF
+            title = "请求头版本号"
+            summary = "修改版本号将影响User-Agent、Referer和Version请求头\n默认值：$DEFAULT_VERSION（需要重启生效）"
+            dialogTitle = "设置请求头版本号"
+            dialogMessage = "请输入APP版本号（示例：2.2.6）"
+            setDefaultValue(DEFAULT_VERSION)
+
+            setOnPreferenceChangeListener { _, newValue ->
+                try {
+                    preferences.edit().putString(VERSION_PREF, newValue as? String ?: DEFAULT_VERSION).commit()
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                    false
+                }
+            }
+        }
+        screen.addPreference(versionPreference)
     }
 
     companion object {
@@ -430,5 +449,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         private const val CHANGE_WEBP_OPTION = "changeWebp"
         private const val API_URL_PREF = "apiUrl"
         private val APIURLS = arrayOf("api.mangacopy.com", "api.copymanga.tv", "api.mangacopy.com", "api.copymanga.site")
+        private const val DEFAULT_VERSION = "2.2.6"
+        private const val VERSION_PREF = "headerVersion"
     }
 }
