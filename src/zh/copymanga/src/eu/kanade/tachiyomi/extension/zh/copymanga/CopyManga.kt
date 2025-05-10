@@ -448,7 +448,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
         private const val CHANGE_CDN_OVERSEAS = "changeCDN"
         private const val CHANGE_WEBP_OPTION = "changeWebp"
         private const val API_URL_PREF = "apiUrl"
-        private val APIURLS = arrayOf("api.mangacopy.com", "api.copymanga.tv", "api.mangacopy.com", "api.copymanga.site")
+        private val APIURLS = arrayOf("api.copy-manga.com", "api.copymanga.tv", "api.mangacopy.com", "api.copymanga.site")
         private const val DEFAULT_VERSION = "2.2.6"
         private const val VERSION_PREF = "headerVersion"
     }
