@@ -428,7 +428,7 @@ class CopyManga : ConfigurableSource, HttpSource() {
             title = "请求头版本号"
             summary = "修改版本号将影响User-Agent、Referer和Version请求头\n默认值：$DEFAULT_VERSION（需要重启生效）"
             dialogTitle = "设置请求头版本号"
-            dialogMessage = "请输入APP版本号（示例：2.2.6）"
+            dialogMessage = "请输入APP版本号（示例：2.3.0）"
             setDefaultValue(DEFAULT_VERSION)
 
             setOnPreferenceChangeListener { _, newValue ->
@@ -448,8 +448,8 @@ class CopyManga : ConfigurableSource, HttpSource() {
         private const val CHANGE_CDN_OVERSEAS = "changeCDN"
         private const val CHANGE_WEBP_OPTION = "changeWebp"
         private const val API_URL_PREF = "apiUrl"
-        private val APIURLS = arrayOf("api.copy-manga.com", "api.copymanga.tv", "api.mangacopy.com", "api.copymanga.site")
-        private const val DEFAULT_VERSION = "2.2.6"
+        private val APIURLS = arrayOf("api.copy-manga.com", "api.copymanga.tv", "api.mangacopy.com", "api.copy2000.online")
+        private const val DEFAULT_VERSION = "2.3.0"
         private const val VERSION_PREF = "headerVersion"
     }
 }
